@@ -1,6 +1,6 @@
 # Vibrary 用户操作手册
 
-适用版本：Vibrary 0.1.0 MVP  
+适用版本：Vibrary 0.1.0 MVP
 适用对象：直接使用 Windows 桌面端和 Android 客户端的用户
 
 Vibrary 是一个本地优先的多设备资料库。Windows 电脑负责保存资料库正本、构建索引、运行 Qdrant 检索和向手机分发文件；Android 手机负责选择本机文件或文件夹、维护上传队列、发起搜索、打开本地副本或按需下载缓存。Android 不运行 Qdrant，也不会直接访问 Qdrant。
@@ -389,8 +389,8 @@ http://127.0.0.1:8765/v1/pairing/qr
 }
 ```
 
-把 `server_url` 填入 Android `Pair` 页面的 `Server URL`。  
-把 `pairing_token` 填入 Android `Pair` 页面的 `Pairing token`。  
+把 `server_url` 填入 Android `Pair` 页面的 `Server URL`。
+把 `pairing_token` 填入 Android `Pair` 页面的 `Pairing token`。
 然后点击 Android 上的 `Pair`。
 
 如果 `server_url` 返回的是 `http://127.0.0.1:8765`，说明桌面端不是局域网模式启动。请关闭桌面端，用 `VIBRARY_ENABLE_LAN=1` 重新启动。
