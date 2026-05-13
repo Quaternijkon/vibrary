@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Vibrary" parent="android:style/Theme.Material.Light.NoActionBar" />
+</resources>
