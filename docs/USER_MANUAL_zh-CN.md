@@ -5,6 +5,22 @@
 
 Vibrary 是一个本地优先的多设备资料库。Windows 电脑负责保存资料库正本、构建索引、运行 Qdrant 检索和向手机分发文件；Android 手机负责选择本机文件或文件夹、维护上传队列、发起搜索、打开本地副本或按需下载缓存。Android 不运行 Qdrant，也不会直接访问 Qdrant。
 
+## 目录
+
+- [1. 下载内容](#1-下载内容)
+- [2. 系统要求](#2-系统要求)
+- [3. 重要概念](#3-重要概念)
+- [4. 快速开始](#4-快速开始)
+- [5. Windows 桌面端](#5-windows-桌面端)
+- [6. Android 客户端](#6-android-客户端)
+- [7. Windows 与 Android 配对](#7-windows-与-android-配对)
+- [8. 搜索结果和传输策略](#8-搜索结果和传输策略)
+- [9. 安全和隐私](#9-安全和隐私)
+- [10. 常见问题](#10-常见问题)
+- [11. 重新构建发布包](#11-重新构建发布包)
+- [12. 当前 MVP 功能边界](#12-当前-mvp-功能边界)
+- [13. 推荐使用流程](#13-推荐使用流程)
+
 ## 1. 下载内容
 
 发布目录通常包含：
@@ -27,6 +43,26 @@ release/
 - `Vibrary_User_Manual_zh-CN.md`：本操作手册。
 - `manifest.json`：发布文件大小和 SHA-256 校验信息。
 - `SHA256SUMS.txt`：可用于校验下载文件完整性。
+
+阅读方式：
+
+- 直接打开 `Vibrary_User_Manual_zh-CN.md` 即可阅读。
+- 如果 Windows 记事本显示乱码，请用 VS Code、Typora、Obsidian、浏览器 Markdown 插件或其他支持 UTF-8 的 Markdown 阅读器打开。
+- 本手册是纯文本 Markdown 文件，不依赖网络，也不需要启动 Vibrary 程序。
+
+校验下载完整性：
+
+1. 打开 PowerShell。
+2. 进入 `release/` 目录。
+3. 运行：
+
+```powershell
+Get-FileHash -Algorithm SHA256 ".\desktop\Vibrary 0.1.0.exe"
+Get-FileHash -Algorithm SHA256 ".\android\Vibrary-debug.apk"
+Get-FileHash -Algorithm SHA256 ".\Vibrary_User_Manual_zh-CN.md"
+```
+
+4. 把输出的哈希值和 `SHA256SUMS.txt` 中对应条目比较。如果一致，说明文件未损坏。
 
 ## 2. 系统要求
 
@@ -79,7 +115,7 @@ Windows 收到文件并复制到资料库后，会生成索引任务。索引任
 Windows + Android 使用：
 
 1. 在 Windows 上启动桌面端。
-2. 如果需要手机连接，建议用局域网模式启动桌面端，见“8. Android 配对 Windows”。
+2. 如果需要手机连接，建议用局域网模式启动桌面端，见“7. Windows 与 Android 配对”。
 3. 在 Android 上安装并打开 `Vibrary-debug.apk`。
 4. 在 Android 的 `Pair` 页面输入 Windows 后端地址和配对 token。
 5. 在 Android 的 `Select` 页面选择文件或文件夹。
