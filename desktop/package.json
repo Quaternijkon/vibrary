@@ -17,6 +17,7 @@
     "appId": "com.vibrary.desktop",
     "productName": "Vibrary",
     "asar": true,
+    "electronDist": "node_modules/electron/dist",
     "files": [
       "dist/**",
       "package.json"
@@ -31,6 +32,7 @@
       }
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "portable",

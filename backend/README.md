@@ -2,6 +2,9 @@
 
 This backend is the Windows-only service layer for the Vibrary MVP. Android and
 the desktop renderer talk to this API; neither client talks to Qdrant directly.
+It is the backend-core boundary of the project: research/indexing/library logic
+lives here, while desktop and Android client engineering code lives outside this
+package.
 
 ## Responsibilities
 
@@ -59,3 +62,18 @@ VIBRARY_QDRANT_API_KEY
 `VIBRARY_BACKEND_HOST=0.0.0.0` allows Android LAN access to the backend API.
 Remote clients must pair first and then send `Authorization: Bearer <token>`.
 Qdrant must stay at `127.0.0.1`.
+
+## Building backend.exe
+
+The repository-level release script builds this package with PyInstaller and
+stages the full onedir output where the desktop app expects it:
+
+```powershell
+.\scripts\build_release.ps1 -SkipDesktop -SkipAndroid
+```
+
+The staged sidecar is written to:
+
+```text
+desktop/sidecars/backend/backend.exe
+```

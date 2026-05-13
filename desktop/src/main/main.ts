@@ -1,15 +1,24 @@
 import path from "node:path";
 import { app, BrowserWindow } from "electron";
 import { registerIpc } from "./ipc.js";
-import { createServiceConfig, isPackagedApp } from "./serviceConfig.js";
+import { createServiceConfig, DEFAULT_QDRANT_PORT, isPackagedApp } from "./serviceConfig.js";
+import { findAvailableTcpPort } from "./ports.js";
 import { SidecarManager } from "./sidecars.js";
 
 const manager = new SidecarManager();
-const serviceConfig = createServiceConfig();
+let serviceConfig: ReturnType<typeof createServiceConfig> | null = null;
+
+function currentServiceConfig() {
+  if (!serviceConfig) {
+    throw new Error("service config has not been initialized");
+  }
+  return serviceConfig;
+}
 
 async function startServices() {
-  await manager.start("qdrant", serviceConfig.qdrantCommand);
-  await manager.start("backend", serviceConfig.backendCommand);
+  const config = currentServiceConfig();
+  await manager.start("qdrant", config.qdrantCommand);
+  await manager.start("backend", config.backendCommand);
 }
 
 async function stopServices() {
@@ -17,11 +26,12 @@ async function stopServices() {
 }
 
 function snapshot() {
+  const config = currentServiceConfig();
   return {
-    backendUrl: serviceConfig.backendUrl,
-    qdrantUrl: serviceConfig.qdrantUrl,
-    dataRoot: serviceConfig.paths.root,
-    dataMode: serviceConfig.paths.mode,
+    backendUrl: config.backendUrl,
+    qdrantUrl: config.qdrantUrl,
+    dataRoot: config.paths.root,
+    dataMode: config.paths.mode,
     services: manager.status()
   };
 }
@@ -56,6 +66,10 @@ registerIpc({
 });
 
 app.whenReady().then(async () => {
+  const qdrantPort = process.env.VIBRARY_QDRANT_PORT
+    ? Number(process.env.VIBRARY_QDRANT_PORT)
+    : await findAvailableTcpPort("127.0.0.1", DEFAULT_QDRANT_PORT, 50);
+  serviceConfig = createServiceConfig({ qdrantPort });
   await startServices();
   await createWindow();
 

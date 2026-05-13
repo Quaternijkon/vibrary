@@ -3,17 +3,57 @@
 Vibrary is a local-first library and search MVP based on
 `qdrant_android_windows_agent_plan_v2.md`.
 
-The system is split into three deliverables:
+The system is split as `backend-core + clients`:
 
-- `backend/`: Windows-only FastAPI service with SQLite persistence, asset
+- `backend/`: backend-core. It is the Windows-only FastAPI service with SQLite persistence, asset
   lifecycle, resumable upload import, Qdrant vector-store adapter integration,
   source-aware retrieval, bearer-token pairing, and safe cache cleanup.
-- `desktop/`: Electron + React + TypeScript Windows client shell that manages
-  `qdrant.exe` and `backend.exe` sidecars and exposes only narrow IPC to the
-  renderer.
-- `android/`: Kotlin + Jetpack Compose Android app with Room entities,
+- `desktop/`: Windows client. It is an Electron + React + TypeScript shell that
+  starts `qdrant.exe` and `backend.exe` sidecars in the main process before the
+  UI opens, so users do not manually launch the backend. The renderer only gets
+  narrow IPC for desktop-local capabilities.
+- `android/`: Android client. It is a Kotlin + Jetpack Compose app with Room entities,
   WorkManager upload scheduling, SAF file/folder selection, Retrofit pairing
   and search APIs, source-aware result handling, and cache cleanup policy.
+
+The backend-core does not depend on Electron, Android, or client UI code.
+Desktop and Android are engineering clients around the same backend API.
+
+## Release Build
+
+Run this from the repository root on Windows to build runnable artifacts:
+
+```powershell
+.\scripts\build_release.ps1
+```
+
+The script builds `backend.exe` with PyInstaller, downloads the official
+Windows x64 Qdrant sidecar, builds the Electron portable desktop app, builds
+the Android debug APK, and writes checksums.
+
+Generated artifacts are local build outputs and are intentionally not committed:
+
+```text
+release/
+  desktop/
+    Vibrary <version>.exe
+  android/
+    Vibrary-debug.apk
+  manifest.json
+  SHA256SUMS.txt
+```
+
+During the desktop build, sidecars are staged under:
+
+```text
+desktop/sidecars/
+  backend/backend.exe
+  qdrant/qdrant.exe
+```
+
+`electron-builder` copies that sidecar layout into the portable executable's
+resources. At runtime the Electron main process launches both sidecars with
+hidden windows.
 
 ## Verification
 
@@ -35,6 +75,7 @@ cd desktop
 npm test -- --reporter=verbose --pool=forks --poolOptions.forks.singleFork=true --poolOptions.forks.isolate=false
 npm run typecheck
 npm run build
+npm run dist:portable
 ```
 
 Android tests and debug build:
@@ -48,7 +89,9 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
 
 ## Runtime Notes
 
-- Qdrant runs only as a Windows sidecar bound to `127.0.0.1:6333` with an API key.
+- Qdrant runs only as a Windows sidecar bound to `127.0.0.1` with an API key.
+  The desktop app prefers port `6333`, but if that port is occupied it selects
+  the next available localhost port and passes the same URL to the backend.
 - The desktop backend listens on `127.0.0.1` by default. Set
   `VIBRARY_ENABLE_LAN=1` or `VIBRARY_BACKEND_HOST` only when LAN access is
   intentionally enabled.

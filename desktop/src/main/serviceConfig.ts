@@ -8,9 +8,9 @@ import { buildBackendCommand, buildQdrantCommand } from "./sidecars.js";
 export const PRODUCT_NAME = "Vibrary";
 export const BACKEND_CLIENT_HOST = process.env.VIBRARY_BACKEND_CLIENT_HOST ?? "127.0.0.1";
 export const BACKEND_PORT = Number(process.env.VIBRARY_BACKEND_PORT ?? "8765");
-export const QDRANT_URL = "http://127.0.0.1:6333";
+export const DEFAULT_QDRANT_PORT = 6333;
 
-export function createServiceConfig() {
+export function createServiceConfig(input: { qdrantPort?: number } = {}) {
   const paths = resolveDataPaths({
     productName: PRODUCT_NAME,
     execPath: process.execPath,
@@ -21,14 +21,17 @@ export function createServiceConfig() {
 
   const qdrantApiKey = loadOrCreateSecret(path.join(paths.config, "qdrant-api-key"));
   const resourcesPath = process.resourcesPath || path.dirname(process.execPath);
+  const qdrantPort = input.qdrantPort ?? Number(process.env.VIBRARY_QDRANT_PORT ?? DEFAULT_QDRANT_PORT);
+  const qdrantUrl = `http://127.0.0.1:${qdrantPort}`;
 
   return {
     paths,
     backendUrl: `http://${BACKEND_CLIENT_HOST}:${BACKEND_PORT}`,
-    qdrantUrl: QDRANT_URL,
+    qdrantUrl,
     qdrantCommand: buildQdrantCommand({
       resourcesPath,
       qdrantStoragePath: paths.qdrantStorage,
+      qdrantPort,
       apiKey: qdrantApiKey
     }),
     backendCommand: buildBackendCommand({
@@ -37,7 +40,7 @@ export function createServiceConfig() {
       backendHost: resolveBackendListenHost(process.env),
       backendPort: BACKEND_PORT,
       publicUrl: process.env.VIBRARY_PUBLIC_URL,
-      qdrantUrl: QDRANT_URL,
+      qdrantUrl,
       qdrantApiKey
     })
   };

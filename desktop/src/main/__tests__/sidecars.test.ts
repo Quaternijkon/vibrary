@@ -8,10 +8,11 @@ import {
 import { resolveBackendListenHost } from "../serviceConfig";
 
 describe("buildQdrantCommand", () => {
-  it("binds Qdrant to localhost port 6333 with storage and API key env", () => {
+  it("binds Qdrant to localhost with the resolved port, storage, and API key env", () => {
     const command = buildQdrantCommand({
       resourcesPath: "C:\\Tools\\Vibrary\\resources",
       qdrantStoragePath: "C:\\Data\\qdrant\\storage",
+      qdrantPort: 6335,
       apiKey: "secret-key"
     });
 
@@ -19,7 +20,7 @@ describe("buildQdrantCommand", () => {
     expect(command.args).toEqual([]);
     expect(command.env).toMatchObject({
       QDRANT__SERVICE__HOST: "127.0.0.1",
-      QDRANT__SERVICE__HTTP_PORT: "6333",
+      QDRANT__SERVICE__HTTP_PORT: "6335",
       QDRANT__SERVICE__API_KEY: "secret-key",
       QDRANT__STORAGE__STORAGE_PATH: "C:\\Data\\qdrant\\storage"
     });
@@ -52,10 +53,25 @@ describe("buildBackendCommand", () => {
 });
 
 describe("SidecarManager", () => {
+  it("fails clearly when a configured sidecar executable is missing", async () => {
+    const spawner: ProcessSpawner = vi.fn(() => ({ pid: 42, kill: vi.fn() }));
+    const manager = new SidecarManager(spawner, () => false);
+
+    await expect(
+      manager.start("backend", {
+        file: "C:\\Tools\\Vibrary\\resources\\sidecars\\backend\\backend.exe",
+        args: [],
+        env: {}
+      })
+    ).rejects.toThrow("backend sidecar executable not found");
+    expect(spawner).not.toHaveBeenCalled();
+    expect(manager.status()).toEqual([{ name: "backend", running: false }]);
+  });
+
   it("starts configured sidecars through the injected spawner and stops them", async () => {
     const kill = vi.fn();
     const spawner: ProcessSpawner = vi.fn(() => ({ pid: 42, kill }));
-    const manager = new SidecarManager(spawner);
+    const manager = new SidecarManager(spawner, () => true);
 
     await manager.start("qdrant", {
       file: "qdrant.exe",

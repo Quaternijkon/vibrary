@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 export type SidecarName = "qdrant" | "backend";
@@ -20,6 +21,8 @@ export type ProcessSpawner = (
   options: { env: Record<string, string>; windowsHide: true }
 ) => SpawnedProcess;
 
+export type SidecarFileExists = (file: string) => boolean;
+
 export type SidecarStatus = {
   name: SidecarName;
   pid?: number;
@@ -29,6 +32,7 @@ export type SidecarStatus = {
 export function buildQdrantCommand(input: {
   resourcesPath: string;
   qdrantStoragePath: string;
+  qdrantPort: number;
   apiKey: string;
 }): SidecarCommand {
   return {
@@ -36,7 +40,7 @@ export function buildQdrantCommand(input: {
     args: [],
     env: {
       QDRANT__SERVICE__HOST: "127.0.0.1",
-      QDRANT__SERVICE__HTTP_PORT: "6333",
+      QDRANT__SERVICE__HTTP_PORT: String(input.qdrantPort),
       QDRANT__SERVICE__API_KEY: input.apiKey,
       QDRANT__STORAGE__STORAGE_PATH: input.qdrantStoragePath
     }
@@ -70,12 +74,20 @@ export class SidecarManager {
   private readonly processes = new Map<SidecarName, SpawnedProcess>();
   private readonly statuses = new Map<SidecarName, SidecarStatus>();
 
-  constructor(private readonly spawner: ProcessSpawner = defaultSpawner) {}
+  constructor(
+    private readonly spawner: ProcessSpawner = defaultSpawner,
+    private readonly fileExists: SidecarFileExists = fs.existsSync
+  ) {}
 
   async start(name: SidecarName, command: SidecarCommand): Promise<void> {
     const current = this.processes.get(name);
     if (current) {
       return;
+    }
+
+    if (!this.fileExists(command.file)) {
+      this.statuses.set(name, { name, running: false });
+      throw new Error(`${name} sidecar executable not found: ${command.file}`);
     }
 
     const child = this.spawner(command.file, command.args, {

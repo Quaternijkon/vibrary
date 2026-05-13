@@ -1,12 +1,18 @@
 .venv/
+.build/
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
 
 node_modules/
 dist/
 desktop/dist/
 desktop/node_modules/
+desktop/release/
+desktop/sidecars/backend/
+desktop/sidecars/qdrant/
+!desktop/sidecars/README.md
 
 .gradle/
 build/
@@ -17,3 +23,4 @@ android/app/build/
 *.log
 portable-data/
 /data/
+/release/
