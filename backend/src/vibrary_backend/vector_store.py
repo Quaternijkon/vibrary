@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 from urllib.parse import urlparse
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
@@ -13,6 +14,13 @@ from .embedding import EmbeddingProvider, FastEmbedEmbeddingProvider
 
 
 VECTOR_DIMENSION = 64
+PAYLOAD_INDEX_FIELDS = (
+    "asset_id",
+    "asset_version_id",
+    "mime_type",
+    "job_type",
+    "embedding_profile_id",
+)
 
 
 @dataclass(frozen=True)
@@ -123,15 +131,16 @@ class QdrantVectorStore:
     def query(self, collection_name: str, query: str, limit: int, filters: dict[str, object] | None = None) -> list[SearchHit]:
         self._ensure_collection(collection_name)
         payload: dict[str, object] = {
-            "vector": self.embedding_provider.embed_query(collection_name, query),
+            "query": self.embedding_provider.embed_query(collection_name, query),
             "limit": limit,
             "with_payload": True,
         }
         qdrant_filter = _qdrant_filter(filters)
         if qdrant_filter:
             payload["filter"] = qdrant_filter
-        response = self._request("POST", f"/collections/{collection_name}/points/search", payload)
-        result = response.get("result", [])
+        response = self._request("POST", f"/collections/{collection_name}/points/query", payload)
+        result = response.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else result
         return [
             SearchHit(
                 point_id=str(item["id"]),
@@ -140,26 +149,49 @@ class QdrantVectorStore:
                 collection_name=collection_name,
                 score=float(item.get("score", 0.0)),
             )
-            for item in result
+            for item in points
         ]
 
     def _ensure_collection(self, collection_name: str) -> None:
         if collection_name in self._collections_ready:
             return
-        payload = {"vectors": {"size": self.embedding_provider.dimension(collection_name), "distance": "Cosine"}}
-        self._request("PUT", f"/collections/{collection_name}", payload)
+        if not self._collection_exists(collection_name):
+            payload = {"vectors": {"size": self.embedding_provider.dimension(collection_name), "distance": "Cosine"}}
+            self._request("PUT", f"/collections/{collection_name}", payload)
+        self._ensure_payload_indexes(collection_name)
         self._collections_ready.add(collection_name)
 
-    def _request(self, method: str, path: str, payload: dict[str, object]) -> dict[str, object]:
-        data = json.dumps(payload).encode("utf-8")
+    def _collection_exists(self, collection_name: str) -> bool:
+        response = self._request("GET", f"/collections/{collection_name}/exists")
+        result = response.get("result", {})
+        return bool(result.get("exists")) if isinstance(result, dict) else False
+
+    def _ensure_payload_indexes(self, collection_name: str) -> None:
+        for field in PAYLOAD_INDEX_FIELDS:
+            self._create_payload_index(collection_name, field)
+
+    def _create_payload_index(self, collection_name: str, field_name: str) -> None:
+        try:
+            self._request(
+                "PUT",
+                f"/collections/{collection_name}/index",
+                {"field_name": field_name, "field_schema": "keyword"},
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code in {400, 409} and _http_error_mentions_existing_index(exc):
+                return
+            raise
+
+    def _request(self, method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {"api-key": self.api_key}
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
         request = urllib.request.Request(
             f"{self.url}{path}",
             data=data,
             method=method,
-            headers={
-                "Content-Type": "application/json",
-                "api-key": self.api_key,
-            },
+            headers=headers,
         )
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -189,6 +221,14 @@ def _validated_local_qdrant_url(url: str) -> str:
     if parsed.params or parsed.query or parsed.fragment:
         raise ValueError("Qdrant URL must not include params, query, or fragment")
     return f"{parsed.scheme}://127.0.0.1:{parsed.port}{parsed.path.rstrip('/')}"
+
+
+def _http_error_mentions_existing_index(exc: urllib.error.HTTPError) -> bool:
+    try:
+        body = exc.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return False
+    return "already" in body.lower() and "index" in body.lower()
 
 
 def default_collections(search_types: list[str] | None = None) -> list[str]:

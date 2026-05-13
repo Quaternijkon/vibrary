@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import re
+import uuid
 from dataclasses import dataclass
 
 from .config import DEFAULT_EMBEDDING_PROFILE, IMAGE_COLLECTION, TEXT_COLLECTION, AppPaths
-from .database import Database, new_id
+from .database import Database
 from .timeutil import utc_now
 from .vector_store import VectorPoint, VectorStore
+
+
+MAX_INDEX_RETRIES = 3
 
 
 @dataclass(frozen=True)
@@ -30,10 +34,11 @@ class IndexService:
             JOIN assets a ON a.asset_id = ij.asset_id
             JOIN library_files lf ON lf.asset_id = ij.asset_id AND lf.exists_flag = 1
             WHERE ij.status IN ('queued', 'retry_wait')
+               OR (ij.status = 'failed' AND ij.retry_count < ?)
             ORDER BY ij.priority ASC, ij.created_at ASC
             LIMIT ?
             """,
-            (limit,),
+            (MAX_INDEX_RETRIES, limit),
         )
         indexed = 0
         failed = 0
@@ -49,7 +54,7 @@ class IndexService:
                 content = self._extract_content(path, str(row["job_type"]), str(row["original_name"]), str(row["mime_type"]))
                 collection = IMAGE_COLLECTION if str(row["job_type"]) == "image" else TEXT_COLLECTION
                 payload_hash = hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest()
-                point_id = new_id("point")
+                point_id = str(uuid.uuid4())
                 now = utc_now()
                 payload = {
                     "asset_id": row["asset_id"],
@@ -123,15 +128,18 @@ class IndexService:
                 indexed += 1
             except Exception as exc:
                 failed += 1
+                next_retry_count = int(row["retry_count"]) + 1
+                next_status = "retry_wait" if next_retry_count < MAX_INDEX_RETRIES else "failed"
                 self.db.execute(
                     """
                     UPDATE index_jobs
-                    SET status = 'failed', completed_at = ?, error_message = ?, retry_count = retry_count + 1
+                    SET status = ?, completed_at = ?, error_message = ?, retry_count = retry_count + 1
                     WHERE index_job_id = ?
                     """,
-                    (utc_now(), str(exc), row["index_job_id"]),
+                    (next_status, utc_now(), str(exc), row["index_job_id"]),
                 )
-                self.db.execute("UPDATE assets SET index_status = 'failed' WHERE asset_id = ?", (row["asset_id"],))
+                asset_status = "queued" if next_status == "retry_wait" else "failed"
+                self.db.execute("UPDATE assets SET index_status = ? WHERE asset_id = ?", (asset_status, row["asset_id"]))
         return IndexProcessResult(indexed_count=indexed, failed_count=failed)
 
     def _extract_content(self, path, job_type: str, title: str, mime_type: str) -> str:

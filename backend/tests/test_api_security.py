@@ -51,6 +51,31 @@ class ApiSecurityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_desktop_renderer_origin_can_fetch_pairing_code_over_cors(self) -> None:
+        origin = "http://127.0.0.1:5173"
+
+        preflight = self.local_client.options(
+            "/v1/pairing/qr",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        response = self.local_client.get("/v1/pairing/qr", headers={"Origin": origin})
+
+        self.assertEqual(preflight.status_code, 200)
+        self.assertEqual(preflight.headers.get("access-control-allow-origin"), origin)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("access-control-allow-origin"), origin)
+        self.assertRegex(response.json()["pairing_code"], r"^\d{6}$")
+
+    def test_packaged_file_renderer_origin_can_fetch_pairing_code_over_cors(self) -> None:
+        response = self.local_client.get("/v1/pairing/qr", headers={"Origin": "null"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("access-control-allow-origin"), "null")
+        self.assertRegex(response.json()["pairing_code"], r"^\d{6}$")
+
     def test_remote_claim_can_use_local_pairing_token_then_token_is_bound_to_device(self) -> None:
         qr = self.local_client.get("/v1/pairing/qr").json()
         self.assertRegex(qr["pairing_code"], r"^\d{6}$")

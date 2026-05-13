@@ -17,5 +17,6 @@ describe("desktop UI copy", () => {
     expect(desktopCopy.actions.refresh).toBe("刷新");
     expect(desktopCopy.actions.chooseFiles).toBe("选择文件");
     expect(desktopCopy.actions.process).toBe("处理索引");
+    expect(desktopCopy.library.indexQueued).toBe("索引入队");
   });
 });

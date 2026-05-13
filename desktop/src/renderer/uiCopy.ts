@@ -42,7 +42,8 @@ export const desktopCopy = {
     filesSelected: "已选文件",
     folderSelected: "已选文件夹",
     imported: "已导入",
-    duplicates: "重复"
+    duplicates: "重复",
+    indexQueued: "索引入队"
   },
   queues: {
     uploadTitle: "上传队列",
@@ -64,7 +65,10 @@ export const desktopCopy = {
   messages: {
     ready: "就绪",
     selectedFiles: (count: number) => `已导入 ${count} 个选中文件`,
+    importCompleted: (imported: number, duplicates: number, queued: number) =>
+      `导入完成：新增 ${imported} 项，重复 ${duplicates} 项，索引入队 ${queued} 项`,
     folderQueued: "文件夹已提交导入",
+    requestFailed: (detail: string) => `操作失败：${detail}`,
     indexed: (indexed: number, failed: number) => `已索引 ${indexed} 项，失败 ${failed} 项`,
     results: (count: number) => `找到 ${count} 条结果`,
     cacheDeleted: (count: number) => `已删除 ${count} 个下载缓存文件`

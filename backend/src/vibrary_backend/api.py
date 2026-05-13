@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 
 from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -23,6 +24,13 @@ from .resolver import ReplicaResolver
 from .search import SearchService
 from .uploads import UploadService
 from .vector_store import InMemoryVectorStore, QdrantVectorStore, VectorStore
+
+
+DESKTOP_RENDERER_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "null",
+]
 
 
 class PreflightRequest(BaseModel):
@@ -133,6 +141,12 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
     app = FastAPI(title="Vibrary Backend", version="0.1.0")
     app.state.services = services
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=DESKTOP_RENDERER_ORIGINS,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "api-key"],
+    )
 
     @app.middleware("http")
     async def require_auth_for_lan(request: Request, call_next):

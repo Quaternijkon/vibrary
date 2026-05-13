@@ -86,9 +86,14 @@ function App() {
     const files = await window.vibraryDesktop.selectImportFiles();
     setSelectedFiles(files);
     if (files.length > 0 && client) {
-      setImportSummary(await client.importFiles(files));
-      await refreshBackendData(client);
-      setMessage(desktopCopy.messages.selectedFiles(files.length));
+      try {
+        const summary = await client.importFiles(files);
+        setImportSummary(summary);
+        await refreshBackendData(client);
+        setMessage(desktopCopy.messages.importCompleted(summary.imported_count, summary.duplicate_count, summary.index_queued_count));
+      } catch (error) {
+        setMessage(desktopCopy.messages.requestFailed(error instanceof Error ? error.message : String(error)));
+      }
     }
   }
 
@@ -96,9 +101,14 @@ function App() {
     const folder = await window.vibraryDesktop.selectImportFolder();
     setSelectedFolder(folder);
     if (folder && client) {
-      setImportSummary(await client.importFolder(folder));
-      await refreshBackendData(client);
-      setMessage(desktopCopy.messages.folderQueued);
+      try {
+        const summary = await client.importFolder(folder);
+        setImportSummary(summary);
+        await refreshBackendData(client);
+        setMessage(desktopCopy.messages.importCompleted(summary.imported_count, summary.duplicate_count, summary.index_queued_count));
+      } catch (error) {
+        setMessage(desktopCopy.messages.requestFailed(error instanceof Error ? error.message : String(error)));
+      }
     }
   }
 
@@ -224,6 +234,7 @@ function App() {
             <Metric label={desktopCopy.library.folderSelected} value={selectedFolder ? 1 : 0} />
             <Metric label={desktopCopy.library.imported} value={importSummary?.imported_count ?? 0} />
             <Metric label={desktopCopy.library.duplicates} value={importSummary?.duplicate_count ?? 0} />
+            <Metric label={desktopCopy.library.indexQueued} value={importSummary?.index_queued_count ?? 0} />
           </div>
         </section>
 
