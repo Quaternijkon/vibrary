@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -60,6 +61,9 @@ interface VibraryApi {
         @Path("device_id") deviceId: String,
         @Path("ref_id") refId: String,
     ): RefPermissionResponse
+
+    @DELETE("/v1/devices/{device_id}")
+    suspend fun deleteDevice(@Path("device_id") deviceId: String): DeleteDeviceResponse
 }
 
 @Serializable
@@ -74,6 +78,12 @@ data class PairingClaimRequest(
 data class PairingClaimResponse(
     val trusted: Boolean,
     @SerialName("device_token") val deviceToken: String,
+)
+
+@Serializable
+data class DeleteDeviceResponse(
+    @SerialName("device_id") val deviceId: String,
+    val revoked: Boolean,
 )
 
 @Serializable

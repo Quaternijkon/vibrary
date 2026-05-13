@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
+import urllib.error
+import urllib.request
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -161,8 +165,18 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
         return await call_next(request)
 
     @app.on_event("shutdown")
-    def close_database() -> None:
+    async def close_database() -> None:
+        task = getattr(app.state, "auto_index_task", None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         services.db.close()
+
+    @app.on_event("startup")
+    async def start_auto_indexer() -> None:
+        if services.settings.auto_index:
+            app.state.auto_index_task = asyncio.create_task(_auto_index_loop(services))
 
     @app.get("/v1/health")
     def health() -> dict[str, Any]:
@@ -171,11 +185,18 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             "schema_version": services.db.scalar("SELECT schema_version FROM schema_info ORDER BY applied_at DESC LIMIT 1"),
             "qdrant": {"url": services.settings.qdrant_url, "exposed_to_lan": False},
             "public_url": services.settings.public_url,
+            "auto_index": services.settings.auto_index,
         }
 
     @app.get("/v1/devices")
     def devices() -> list[dict[str, Any]]:
         return [dict(row) for row in services.db.query("SELECT * FROM devices ORDER BY device_name")]
+
+    @app.delete("/v1/devices/{device_id}")
+    def delete_device(device_id: str) -> dict[str, Any]:
+        if device_id == "windows-local":
+            raise HTTPException(status_code=400, detail="cannot revoke local Windows device")
+        return {"device_id": device_id, "revoked": services.pairing.revoke_device(device_id)}
 
     @app.get("/v1/pairing/qr")
     def pairing_qr() -> dict[str, str]:
@@ -370,3 +391,27 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
 
 def _requires_remote_device_binding(path: str) -> bool:
     return path.startswith("/v1/assets/") and path.endswith("/content")
+
+
+async def _auto_index_loop(services: Services) -> None:
+    while True:
+        if not await asyncio.to_thread(_vector_store_ready, services):
+            await asyncio.sleep(1.0)
+            continue
+        result = await asyncio.to_thread(services.indexer.process_next, 2)
+        await asyncio.sleep(0.5 if result.indexed_count or result.failed_count else 2.0)
+
+
+def _vector_store_ready(services: Services) -> bool:
+    if not services.settings.use_qdrant:
+        return True
+    request = urllib.request.Request(
+        f"{services.settings.qdrant_url}/collections",
+        method="GET",
+        headers={"api-key": services.settings.qdrant_api_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return 200 <= response.status < 300
+    except (OSError, urllib.error.URLError):
+        return False

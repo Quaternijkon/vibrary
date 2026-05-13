@@ -9,8 +9,13 @@ This folder contains the Windows Electron + React + TypeScript shell for Vibrary
   `127.0.0.1` and requires a generated API key. The desktop app prefers port
   `6333`; if it is occupied, the main process selects the next available
   localhost port and passes that URL to `backend.exe`.
-- The backend listens on `127.0.0.1` by default. LAN binding requires
-  `VIBRARY_ENABLE_LAN=1` or an explicit `VIBRARY_BACKEND_HOST`.
+- The backend listens on LAN by default for paired Android clients. The renderer
+  exposes Settings toggles for LAN mode, discovery broadcast, and automatic
+  indexing. Qdrant remains bound to `127.0.0.1` only.
+- The main process broadcasts a UDP LAN discovery packet with the joinable
+  backend URL while LAN discovery is enabled. Android clients still need the
+  6-digit code shown in the desktop Devices panel before receiving a bearer
+  token.
 - The renderer receives a narrow IPC API through `preload.ts`. It can inspect service status and ask the main process to open native file/folder pickers, but it cannot spawn arbitrary processes.
 - Data paths support portable mode. If `portable.flag` exists next to the executable, data goes to `<app-dir>/portable-data`; otherwise data goes to `%LOCALAPPDATA%/Vibrary`.
 
@@ -38,12 +43,12 @@ VIBRARY_BACKEND_PORT
 VIBRARY_PUBLIC_URL
 VIBRARY_QDRANT_URL
 VIBRARY_QDRANT_API_KEY
+VIBRARY_AUTO_INDEX
 ```
 
-The backend may bind to `0.0.0.0` for Android LAN access only when explicitly
-enabled. Qdrant remains bound to `127.0.0.1` only, even when the selected port
-is not `6333`. LAN clients must use bearer-token authentication obtained from
-the pairing flow.
+The backend may bind to `0.0.0.0` for Android LAN access. Qdrant remains bound
+to `127.0.0.1` only, even when the selected port is not `6333`. LAN clients must
+use bearer-token authentication obtained from the pairing flow.
 
 The desktop renderer should call backend HTTP APIs for library import, queue status, search, devices, cache, models, and settings. IPC is reserved for local desktop capabilities such as sidecar status and user file/folder selection.
 

@@ -55,6 +55,7 @@ export function buildBackendCommand(input: {
   publicUrl?: string;
   qdrantUrl: string;
   qdrantApiKey: string;
+  autoIndexEnabled?: boolean;
 }): SidecarCommand {
   return {
     file: path.join(input.resourcesPath, "sidecars", "backend", "backend.exe"),
@@ -65,7 +66,8 @@ export function buildBackendCommand(input: {
       VIBRARY_BACKEND_PORT: String(input.backendPort),
       ...(input.publicUrl ? { VIBRARY_PUBLIC_URL: input.publicUrl } : {}),
       VIBRARY_QDRANT_URL: input.qdrantUrl,
-      VIBRARY_QDRANT_API_KEY: input.qdrantApiKey
+      VIBRARY_QDRANT_API_KEY: input.qdrantApiKey,
+      VIBRARY_AUTO_INDEX: input.autoIndexEnabled === false ? "0" : "1"
     }
   };
 }

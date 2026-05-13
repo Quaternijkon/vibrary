@@ -102,7 +102,7 @@ class UploadWorker(
                 CompleteUploadRequest(contentSha256 = contentSha256, totalSizeBytes = item.sizeBytes),
             )
             val completedState = if (completed.status == UploadQueueState.SERVER_IMPORTED.wireValue) {
-                UploadQueueState.SERVER_IMPORTED
+                UploadQueueState.SERVER_INDEXING
             } else {
                 UploadQueueState.UPLOADED
             }

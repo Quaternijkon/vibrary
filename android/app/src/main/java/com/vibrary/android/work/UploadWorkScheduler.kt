@@ -17,7 +17,6 @@ class UploadWorkScheduler(context: Context) {
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .setRequiresBatteryNotLow(true)
                     .build(),
             )
             .setInputData(

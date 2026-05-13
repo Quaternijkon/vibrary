@@ -16,7 +16,25 @@ export type QueueItem = {
   job_type?: string;
   status: string;
   bytes_received?: number;
+  size_bytes?: number;
   retry_count?: number;
+  error_message?: string | null;
+};
+
+export type PairingPayload = {
+  server_url: string;
+  pairing_code: string;
+  pairing_token: string;
+  expires_at: string;
+};
+
+export type Device = {
+  device_id: string;
+  device_name: string;
+  device_type: "windows" | "android";
+  paired_at?: string | null;
+  last_seen_at?: string | null;
+  is_trusted: number;
 };
 
 export type SearchResult = {
@@ -73,6 +91,18 @@ export class BackendClient {
 
   processIndexing(limit = 10): Promise<{ indexed_count: number; failed_count: number }> {
     return this.post(`/v1/queues/indexing/process?limit=${limit}`, {});
+  }
+
+  pairingPayload(): Promise<PairingPayload> {
+    return this.get("/v1/pairing/qr");
+  }
+
+  devices(): Promise<Device[]> {
+    return this.get("/v1/devices");
+  }
+
+  deleteDevice(deviceId: string): Promise<{ device_id: string; revoked: boolean }> {
+    return this.delete(`/v1/devices/${encodeURIComponent(deviceId)}`);
   }
 
   search(query: string): Promise<SearchResponse> {

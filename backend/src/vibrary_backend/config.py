@@ -110,6 +110,7 @@ class BackendSettings:
     qdrant_url: str
     qdrant_api_key: str
     use_qdrant: bool
+    auto_index: bool = True
 
     @classmethod
     def from_env(cls) -> "BackendSettings":
@@ -124,6 +125,7 @@ class BackendSettings:
             qdrant_url=os.environ.get("VIBRARY_QDRANT_URL", "http://127.0.0.1:6333"),
             qdrant_api_key=os.environ.get("VIBRARY_QDRANT_API_KEY", "dev-local-qdrant-key"),
             use_qdrant=os.environ.get("VIBRARY_USE_QDRANT", "1") != "0",
+            auto_index=os.environ.get("VIBRARY_AUTO_INDEX", "1") != "0",
         )
 
 

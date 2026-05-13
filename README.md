@@ -17,10 +17,12 @@ The system is split as `backend-core + clients`:
 - `desktop/`: Windows client. It is an Electron + React + TypeScript shell that
   starts `qdrant.exe` and `backend.exe` sidecars in the main process before the
   UI opens, so users do not manually launch the backend. The renderer only gets
-  narrow IPC for desktop-local capabilities.
+  narrow IPC for desktop-local capabilities. LAN access is enabled by default
+  from persisted desktop settings and can be disabled in the Settings panel.
 - `android/`: Android client. It is a Kotlin + Jetpack Compose app with Room entities,
-  WorkManager upload scheduling, SAF file/folder selection, Retrofit pairing
-  and search APIs, source-aware result handling, and cache cleanup policy.
+  WorkManager upload scheduling, SAF file/folder selection, LAN auto-discovery,
+  6-digit pairing-code join flow, Retrofit search APIs, source-aware result
+  handling, and cache cleanup policy.
 
 The backend-core does not depend on Electron, Android, or client UI code.
 Desktop and Android are engineering clients around the same backend API.
@@ -98,14 +100,17 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
 - Qdrant runs only as a Windows sidecar bound to `127.0.0.1` with an API key.
   The desktop app prefers port `6333`, but if that port is occupied it selects
   the next available localhost port and passes the same URL to the backend.
-- The desktop backend listens on `127.0.0.1` by default. Set
-  `VIBRARY_ENABLE_LAN=1` or `VIBRARY_BACKEND_HOST` only when LAN access is
-  intentionally enabled.
+- The desktop backend listens on LAN by default for paired Android devices.
+  The desktop Settings panel can disable LAN mode; Qdrant remains localhost-only.
 - Android only talks to the Windows backend API, using a bearer token obtained
-  from the pairing flow.
+  from the pairing flow. Android discovers nearby desktop nodes through LAN
+  discovery packets and joins by entering the 6-digit code shown in the desktop
+  Devices panel.
 - Files must be copied into the Windows library before indexing.
 - Production indexing uses FastEmbed-backed text and image embedding providers
-  before upserting into Qdrant. The in-memory vector store is used by unit tests.
+  before upserting into Qdrant. The backend auto-indexer processes queued jobs
+  by default, and the manual process button remains as a fallback. The in-memory
+  vector store is used by unit tests.
 - Cache cleanup only deletes application-owned cache files. It does not delete
   Android SAF source originals, Windows external source originals, library
   copies, models, SQLite data, or Qdrant storage.

@@ -1,11 +1,15 @@
 import { dialog, ipcMain } from "electron";
+import type { DesktopSettings } from "./desktopSettings.js";
 import type { SidecarManager } from "./sidecars.js";
 
 export type DesktopSnapshot = {
   backendUrl: string;
+  publicUrl: string;
   qdrantUrl: string;
   dataRoot: string;
   dataMode: "portable" | "local";
+  settings: DesktopSettings;
+  discovery: { running: boolean; port: number };
   services: ReturnType<SidecarManager["status"]>;
 };
 
@@ -14,6 +18,7 @@ export function registerIpc(input: {
   getSnapshot: () => DesktopSnapshot;
   startServices: () => Promise<void>;
   stopServices: () => Promise<void>;
+  updateSettings: (settings: DesktopSettings) => Promise<DesktopSnapshot>;
 }) {
   ipcMain.handle("desktop:getSnapshot", () => input.getSnapshot());
   ipcMain.handle("desktop:startServices", async () => {
@@ -24,6 +29,7 @@ export function registerIpc(input: {
     await input.stopServices();
     return input.getSnapshot();
   });
+  ipcMain.handle("desktop:updateSettings", async (_event, settings: DesktopSettings) => input.updateSettings(settings));
   ipcMain.handle("desktop:selectImportFiles", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile", "multiSelections"]

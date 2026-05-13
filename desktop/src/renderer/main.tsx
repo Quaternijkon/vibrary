@@ -13,9 +13,10 @@ import {
   Search,
   Settings,
   Smartphone,
+  Trash2,
   UploadCloud
 } from "lucide-react";
-import { BackendClient, type ImportSummary, type QueueItem, type SearchResult } from "./backendClient";
+import { BackendClient, type Device, type ImportSummary, type PairingPayload, type QueueItem, type SearchResult } from "./backendClient";
 import { desktopCopy } from "./uiCopy";
 import "./styles.css";
 
@@ -41,6 +42,8 @@ function App() {
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [uploads, setUploads] = useState<QueueItem[]>([]);
   const [indexJobs, setIndexJobs] = useState<QueueItem[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [cacheSummary, setCacheSummary] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<string>(desktopCopy.messages.ready);
@@ -51,16 +54,28 @@ function App() {
     void refresh();
   }, []);
 
+  useEffect(() => {
+    if (!client) return;
+    const timer = window.setInterval(() => {
+      void refreshBackendData(client);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [client]);
+
   async function refresh() {
     const nextSnapshot = await window.vibraryDesktop.getSnapshot();
     setSnapshot(nextSnapshot);
-    await refreshBackendData(new BackendClient(nextSnapshot.backendUrl));
+    const activeClient = new BackendClient(nextSnapshot.backendUrl);
+    await refreshBackendData(activeClient);
+    await refreshPairingPayload(activeClient);
   }
 
   async function startServices() {
     const nextSnapshot = await window.vibraryDesktop.startServices();
     setSnapshot(nextSnapshot);
-    await refreshBackendData(new BackendClient(nextSnapshot.backendUrl));
+    const activeClient = new BackendClient(nextSnapshot.backendUrl);
+    await refreshBackendData(activeClient);
+    await refreshPairingPayload(activeClient);
   }
 
   async function stopServices() {
@@ -89,14 +104,37 @@ function App() {
 
   async function refreshBackendData(activeClient = client) {
     if (!activeClient) return;
-    const [nextUploads, nextIndexJobs, nextCache] = await Promise.all([
+    const [nextUploads, nextIndexJobs, nextCache, nextDevices] = await Promise.all([
       activeClient.uploadsQueue().catch(() => []),
       activeClient.indexingQueue().catch(() => []),
-      activeClient.cacheSummary().catch(() => ({}))
+      activeClient.cacheSummary().catch(() => ({})),
+      activeClient.devices().catch(() => [])
     ]);
     setUploads(nextUploads);
     setIndexJobs(nextIndexJobs);
     setCacheSummary(nextCache);
+    setDevices(nextDevices);
+  }
+
+  async function refreshPairingPayload(activeClient = client) {
+    if (!activeClient) return;
+    setPairingPayload(await activeClient.pairingPayload().catch(() => null));
+  }
+
+  async function removeDevice(deviceId: string) {
+    if (!client) return;
+    await client.deleteDevice(deviceId);
+    await refreshBackendData(client);
+    setMessage(`已移除设备 ${deviceId}`);
+  }
+
+  async function updateSettings(settings: Snapshot["settings"]) {
+    const nextSnapshot = await window.vibraryDesktop.updateSettings(settings);
+    setSnapshot(nextSnapshot);
+    const activeClient = new BackendClient(nextSnapshot.backendUrl);
+    await refreshBackendData(activeClient);
+    await refreshPairingPayload(activeClient);
+    setMessage("设置已保存，后台服务已按新设置重启");
   }
 
   async function processIndexing() {
@@ -163,7 +201,12 @@ function App() {
         <section id="status" className="status-grid">
           <StatusTile title="Qdrant" detail={desktopCopy.status.qdrantDetail} status={qdrant?.running ? "running" : "stopped"} label={qdrant?.running ? desktopCopy.status.running : desktopCopy.status.stopped} />
           <StatusTile title="Backend" detail={snapshot?.backendUrl ?? "127.0.0.1:8765"} status={backend?.running ? "running" : "stopped"} label={backend?.running ? desktopCopy.status.running : desktopCopy.status.stopped} />
-          <StatusTile title={desktopCopy.status.lanApi} detail={desktopCopy.status.lanDetail} status="running" label={desktopCopy.status.localOnly} />
+          <StatusTile
+            title={desktopCopy.status.lanApi}
+            detail={snapshot?.settings.lanEnabled ? snapshot.publicUrl : "仅允许本机访问"}
+            status={snapshot?.settings.lanEnabled ? "running" : "stopped"}
+            label={snapshot?.settings.lanEnabled ? "已开启" : "已关闭"}
+          />
           <StatusTile title={desktopCopy.status.dataRoot} detail={snapshot?.dataRoot ?? "Resolving"} status={snapshot?.dataMode ?? "local"} label={snapshot?.dataMode ?? "local"} />
         </section>
 
@@ -215,10 +258,15 @@ function App() {
         </section>
 
         <section className="card-grid">
-          <InfoPanel id="devices" icon={<Laptop size={20} />} title={desktopCopy.sections[5].label} body={desktopCopy.cards.devices} />
+          <DevicesPanel
+            pairingPayload={pairingPayload}
+            devices={devices}
+            onRefreshCode={() => refreshPairingPayload()}
+            onRemoveDevice={removeDevice}
+          />
           <InfoPanel id="cache" icon={<DownloadCloud size={20} />} title={desktopCopy.sections[6].label} body={`${desktopCopy.cards.cache} ${formatBytes(cacheSummary.downloaded_file ?? 0)}`} action={{ label: desktopCopy.actions.clearDownloads, onClick: clearDownloads }} />
           <InfoPanel id="models" icon={<MonitorCog size={20} />} title={desktopCopy.sections[7].label} body={desktopCopy.cards.models} />
-          <InfoPanel id="settings" icon={<Settings size={20} />} title={desktopCopy.sections[8].label} body={desktopCopy.cards.settings} />
+          {snapshot ? <SettingsPanel snapshot={snapshot} onUpdate={updateSettings} /> : null}
         </section>
         <footer className="message-bar">{message}</footer>
       </section>
@@ -277,10 +325,96 @@ function InfoPanel(props: { id: string; icon: React.ReactNode; title: string; bo
   );
 }
 
+function DevicesPanel(props: {
+  pairingPayload: PairingPayload | null;
+  devices: Device[];
+  onRefreshCode: () => void;
+  onRemoveDevice: (deviceId: string) => void;
+}) {
+  const trustedDevices = props.devices.filter((device) => device.device_id !== "windows-local" && device.is_trusted === 1);
+  return (
+    <section id="devices" className="info-panel">
+      <h2>
+        <Laptop size={20} />
+        {desktopCopy.sections[5].label}
+      </h2>
+      <div className="pairing-code">
+        <span>手机输入验证码</span>
+        <strong>{props.pairingPayload?.pairing_code ?? "------"}</strong>
+        <small>{props.pairingPayload?.server_url ?? "等待后端服务"}</small>
+      </div>
+      <button type="button" onClick={props.onRefreshCode}>刷新验证码</button>
+      <ul className="device-list">
+        {trustedDevices.length === 0 ? <li className="empty-row">暂无已配对手机</li> : null}
+        {trustedDevices.map((device) => (
+          <li key={device.device_id}>
+            <div>
+              <strong>{device.device_name}</strong>
+              <span>{device.last_seen_at ?? device.paired_at ?? device.device_id}</span>
+            </div>
+            <button type="button" className="icon-button" aria-label={`移除 ${device.device_name}`} onClick={() => props.onRemoveDevice(device.device_id)}>
+              <Trash2 size={16} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SettingsPanel(props: { snapshot: Snapshot; onUpdate: (settings: Snapshot["settings"]) => void }) {
+  const { settings } = props.snapshot;
+  return (
+    <section id="settings" className="info-panel">
+      <h2>
+        <Settings size={20} />
+        {desktopCopy.sections[8].label}
+      </h2>
+      <ToggleRow
+        label="默认开启局域网连接"
+        checked={settings.lanEnabled}
+        onChange={(checked) =>
+          props.onUpdate({
+            ...settings,
+            lanEnabled: checked,
+            discoveryEnabled: checked ? true : false
+          })
+        }
+      />
+      <ToggleRow
+        label="自动发现广播"
+        checked={settings.discoveryEnabled}
+        disabled={!settings.lanEnabled}
+        onChange={(checked) => props.onUpdate({ ...settings, discoveryEnabled: checked })}
+      />
+      <ToggleRow
+        label="自动处理索引队列"
+        checked={settings.autoIndexEnabled}
+        onChange={(checked) => props.onUpdate({ ...settings, autoIndexEnabled: checked })}
+      />
+      <p>{settings.lanEnabled ? `手机可发现：${props.snapshot.publicUrl}` : "局域网模式关闭后仅本机客户端可访问后端。"}</p>
+    </section>
+  );
+}
+
+function ToggleRow(props: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className={`toggle-row${props.disabled ? " disabled" : ""}`}>
+      <span>{props.label}</span>
+      <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(event) => props.onChange(event.currentTarget.checked)} />
+    </label>
+  );
+}
+
 function formatQueueItem(item: QueueItem): string {
   const id = item.upload_id ?? item.index_job_id ?? item.asset_id ?? "job";
   const label = item.file_name ?? item.job_type ?? item.asset_id ?? id;
-  return `${label}: ${labelFor(desktopCopy.statusLabels, item.status)}`;
+  const progress =
+    item.bytes_received !== undefined && item.size_bytes !== undefined
+      ? ` · ${formatBytes(item.bytes_received)} / ${formatBytes(item.size_bytes)}`
+      : "";
+  const error = item.error_message ? ` · ${item.error_message}` : "";
+  return `${label}: ${labelFor(desktopCopy.statusLabels, item.status)}${progress}${error}`;
 }
 
 function formatBytes(value: number): string {

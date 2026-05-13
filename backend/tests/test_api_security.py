@@ -53,9 +53,10 @@ class ApiSecurityTests(unittest.TestCase):
 
     def test_remote_claim_can_use_local_pairing_token_then_token_is_bound_to_device(self) -> None:
         qr = self.local_client.get("/v1/pairing/qr").json()
+        self.assertRegex(qr["pairing_code"], r"^\d{6}$")
         claim = self.remote_client.post(
             "/v1/pairing/claim",
-            json={"device_id": "android-1", "device_name": "Phone", "pairing_token": qr["pairing_token"]},
+            json={"device_id": "android-1", "device_name": "Phone", "pairing_token": qr["pairing_code"]},
         )
         token = claim.json()["device_token"]
 
@@ -86,6 +87,32 @@ class ApiSecurityTests(unittest.TestCase):
 
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(spoofed.status_code, 403)
+
+    def test_local_device_delete_revokes_remote_bearer_token(self) -> None:
+        qr = self.local_client.get("/v1/pairing/qr").json()
+        claim = self.remote_client.post(
+            "/v1/pairing/claim",
+            json={"device_id": "android-1", "device_name": "Phone", "pairing_token": qr["pairing_code"]},
+        )
+        token = claim.json()["device_token"]
+
+        deleted = self.local_client.delete("/v1/devices/android-1")
+        blocked = self.remote_client.post(
+            "/v1/uploads/preflight",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "device_id": "android-1",
+                "local_ref_id": "local-1",
+                "file_name": "a.txt",
+                "mime_type": "text/plain",
+                "size_bytes": 1,
+                "quick_fingerprint": "a",
+            },
+        )
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json()["revoked"], True)
+        self.assertEqual(blocked.status_code, 403)
 
     def test_remote_windows_import_is_rejected_even_for_paired_device(self) -> None:
         qr = self.local_client.get("/v1/pairing/qr").json()

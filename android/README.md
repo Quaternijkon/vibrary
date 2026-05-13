@@ -37,12 +37,16 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
   - `paired_servers`
 - Compose UI entry points for pairing, file/folder selection, queue status,
   search, result opening, and cache cleanup.
-- Pairing claim endpoint support. The resulting bearer token is stored in
-  `paired_servers` and used for all backend calls.
+- LAN discovery support for nearby Windows desktop nodes.
+- Pairing claim endpoint support with the 6-digit code shown by the desktop
+  Devices panel. The resulting bearer token is stored in `paired_servers` and
+  used for all backend calls until the paired computer is removed.
 - SAF abstraction for file and folder selection, persistable URI permission,
   and cancellable folder enumeration.
 - Selection persistence creates `upload_queue` records and schedules
   `UploadWorker` through WorkManager.
+- Queue UI observes Room upload rows and displays the actual state, byte
+  progress, percentage, and error message instead of static placeholder cards.
 - `UploadWorker` reads the SAF source as a stream, computes SHA-256, performs
   preflight, skips already received chunks, uploads chunks with per-chunk
   SHA-256 validation, completes the upload, records a `source_original` local

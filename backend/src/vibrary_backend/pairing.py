@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import hashlib
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -12,7 +13,9 @@ from .timeutil import utc_now
 @dataclass(frozen=True)
 class PairingPayload:
     server_url: str
+    pairing_code: str
     pairing_token: str
+    expires_at: str
 
 
 class PairingService:
@@ -20,21 +23,23 @@ class PairingService:
         self.db = db
 
     def create_pairing_payload(self, server_url: str) -> PairingPayload:
-        token = secrets.token_urlsafe(24)
         now = datetime.now(UTC)
-        self.db.execute(
-            """
-            INSERT INTO pairing_tokens(token_hash, server_url, created_at, expires_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                _hash_token(token),
-                server_url,
-                now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                (now + timedelta(minutes=10)).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-            ),
-        )
-        return PairingPayload(server_url=server_url, pairing_token=token)
+        expires_at = (now + timedelta(minutes=10)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        created_at = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        for _ in range(10):
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            try:
+                self.db.execute(
+                    """
+                    INSERT INTO pairing_tokens(token_hash, server_url, created_at, expires_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (_hash_token(code), server_url, created_at, expires_at),
+                )
+                return PairingPayload(server_url=server_url, pairing_code=code, pairing_token=code, expires_at=expires_at)
+            except sqlite3.IntegrityError:
+                continue
+        raise RuntimeError("failed to create a unique pairing code")
 
     def trust_device(self, device_id: str, device_name: str, device_type: str = "android") -> None:
         self.db.upsert_device(device_id, device_name, device_type, is_trusted=True)
@@ -74,6 +79,18 @@ class PairingService:
             (_hash_token(bearer_token),),
         )
         return str(row["device_id"]) if row else None
+
+    def revoke_device(self, device_id: str) -> bool:
+        now = utc_now()
+        existing = self.db.one("SELECT device_id FROM devices WHERE device_id = ?", (device_id,))
+        if existing is None:
+            return False
+        self.db.execute("UPDATE devices SET is_trusted = 0, last_seen_at = ? WHERE device_id = ?", (now, device_id))
+        self.db.execute(
+            "UPDATE device_tokens SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL",
+            (now, device_id),
+        )
+        return True
 
 
 def _hash_token(token: str) -> str:

@@ -8,9 +8,19 @@ export type ServiceStatus = {
 
 export type DesktopSnapshot = {
   backendUrl: string;
+  publicUrl: string;
   qdrantUrl: string;
   dataRoot: string;
   dataMode: "portable" | "local";
+  settings: {
+    lanEnabled: boolean;
+    discoveryEnabled: boolean;
+    autoIndexEnabled: boolean;
+  };
+  discovery: {
+    running: boolean;
+    port: number;
+  };
   services: ServiceStatus[];
 };
 
@@ -18,6 +28,8 @@ const api = {
   getSnapshot: () => ipcRenderer.invoke("desktop:getSnapshot") as Promise<DesktopSnapshot>,
   startServices: () => ipcRenderer.invoke("desktop:startServices") as Promise<DesktopSnapshot>,
   stopServices: () => ipcRenderer.invoke("desktop:stopServices") as Promise<DesktopSnapshot>,
+  updateSettings: (settings: DesktopSnapshot["settings"]) =>
+    ipcRenderer.invoke("desktop:updateSettings", settings) as Promise<DesktopSnapshot>,
   selectImportFiles: () => ipcRenderer.invoke("desktop:selectImportFiles") as Promise<string[]>,
   selectImportFolder: () => ipcRenderer.invoke("desktop:selectImportFolder") as Promise<string | null>
 };

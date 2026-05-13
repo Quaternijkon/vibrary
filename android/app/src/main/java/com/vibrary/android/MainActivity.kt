@@ -10,6 +10,8 @@ import androidx.lifecycle.lifecycleScope
 import com.vibrary.android.cache.AndroidCacheManager
 import com.vibrary.android.data.entities.PairedServerEntity
 import com.vibrary.android.network.ApiClientFactory
+import com.vibrary.android.network.DiscoveryAnnouncement
+import com.vibrary.android.network.LanDiscoveryClient
 import com.vibrary.android.network.PairingClaimRequest
 import com.vibrary.android.network.ResolveRequest
 import com.vibrary.android.network.SearchFilters
@@ -22,6 +24,7 @@ import com.vibrary.android.saf.SafPicker
 import com.vibrary.android.ui.VibraryActions
 import com.vibrary.android.ui.VibraryApp
 import com.vibrary.android.ui.VibraryUiState
+import com.vibrary.android.ui.toUploadQueueRow
 import com.vibrary.android.work.UploadWorkScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var selectionRepository: SelectionRepository
     private lateinit var cacheManager: AndroidCacheManager
     private val uiState = mutableStateOf(VibraryUiState())
+    private val discoveredServers = linkedMapOf<String, DiscoveryAnnouncement>()
 
     private val filesLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -64,10 +68,9 @@ class MainActivity : ComponentActivity() {
         )
         cacheManager = AndroidCacheManager(this, database.cacheEntryDao())
 
-        lifecycleScope.launch {
-            val server = database.pairedServerDao().activeServer()
-            uiState.value = uiState.value.copy(pairedServer = server?.baseUrl)
-        }
+        observeActiveServer()
+        observeUploadQueue()
+        startLanDiscovery()
 
         setContent {
             VibraryApp(
@@ -79,8 +82,56 @@ class MainActivity : ComponentActivity() {
                     onSearch = ::search,
                     onOpenResult = ::openResult,
                     onClearCache = ::clearCache,
+                    onForgetServer = ::forgetServer,
                 ),
             )
+        }
+    }
+
+    private fun observeActiveServer() {
+        val database = (application as VibraryApplication).database
+        lifecycleScope.launch {
+            database.pairedServerDao().observeActiveServer().collect { server ->
+                uiState.value = uiState.value.copy(
+                    pairedServer = server?.baseUrl,
+                    pairedServerName = server?.displayName,
+                )
+            }
+        }
+    }
+
+    private fun observeUploadQueue() {
+        val database = (application as VibraryApplication).database
+        lifecycleScope.launch {
+            database.uploadQueueDao().observeAll().collect { items ->
+                val activeCount = items.count { item -> item.completedAt == null }
+                uiState.value = uiState.value.copy(
+                    queuedCount = activeCount,
+                    uploadRows = items.map { item -> item.toUploadQueueRow() },
+                )
+            }
+        }
+    }
+
+    private fun startLanDiscovery() {
+        lifecycleScope.launch {
+            runCatching {
+                LanDiscoveryClient().listen { announcement ->
+                    withContext(Dispatchers.Main) {
+                        discoveredServers[announcement.instanceId] = announcement
+                        uiState.value = uiState.value.copy(
+                            discoveredServers = discoveredServers.values.toList(),
+                            status = if (uiState.value.pairedServer == null) {
+                                "已发现 ${discoveredServers.size} 台可加入电脑"
+                            } else {
+                                uiState.value.status
+                            },
+                        )
+                    }
+                }
+            }.getOrElse { error ->
+                uiState.value = uiState.value.copy(status = "局域网发现启动失败：${error.userMessage()}")
+            }
         }
     }
 
@@ -104,21 +155,26 @@ class MainActivity : ComponentActivity() {
             }
             uiState.value = uiState.value.copy(
                 selectedCount = uiState.value.selectedCount + documents.size,
-                queuedCount = uiState.value.queuedCount + documents.size,
-                status = "已加入上传队列 ${documents.size} 项",
+                status = "已加入上传队列 ${documents.size} 项，队列页可查看传输进度",
             )
         }
     }
 
     private fun pairServer(serverUrl: String, pairingToken: String) {
         if (serverUrl.isBlank() || pairingToken.isBlank()) {
-            uiState.value = uiState.value.copy(status = "请输入服务器地址和配对 token")
+            uiState.value = uiState.value.copy(status = "请选择电脑并输入 6 位验证码")
+            return
+        }
+        if (!Regex("^\\d{6}$").matches(pairingToken)) {
+            uiState.value = uiState.value.copy(status = "验证码应为 6 位数字")
             return
         }
         lifecycleScope.launch {
             runCatching {
                 val normalizedServerUrl = com.vibrary.android.network.normalizeRetrofitBaseUrl(serverUrl).trimEnd('/')
                 val api = ApiClientFactory.create(normalizedServerUrl)
+                val displayName = discoveredServers.values.firstOrNull { it.serverUrl == normalizedServerUrl }?.deviceName
+                    ?: "Windows Vibrary"
                 val response = api.claimPairing(
                     PairingClaimRequest(
                         deviceId = deviceId(),
@@ -127,21 +183,46 @@ class MainActivity : ComponentActivity() {
                     ),
                 )
                 val database = (application as VibraryApplication).database
+                database.pairedServerDao().deactivateAll()
                 database.pairedServerDao().upsert(
                     PairedServerEntity(
                         pairedServerId = UUID.randomUUID().toString(),
                         baseUrl = normalizedServerUrl,
                         deviceId = deviceId(),
                         pairingToken = response.deviceToken,
-                        displayName = "Windows Vibrary",
+                        displayName = displayName,
                         isActive = true,
                         createdAt = Instant.now().toString(),
                         lastSeenAt = Instant.now().toString(),
                     ),
                 )
-                uiState.value = uiState.value.copy(pairedServer = normalizedServerUrl, status = "已配对")
+                uiState.value = uiState.value.copy(
+                    pairedServer = normalizedServerUrl,
+                    pairedServerName = displayName,
+                    status = "已连接 $displayName，之后会自动复用此连接",
+                )
             }.getOrElse { error ->
                 uiState.value = uiState.value.copy(status = "配对失败：${error.userMessage()}")
+            }
+        }
+    }
+
+    private fun forgetServer() {
+        lifecycleScope.launch {
+            runCatching {
+                val database = (application as VibraryApplication).database
+                val server = activeServerOrError()
+                runCatching {
+                    ApiClientFactory.create(server.baseUrl, server.pairingToken).deleteDevice(server.deviceId)
+                }
+                database.pairedServerDao().deactivate(server.pairedServerId)
+                uiState.value = uiState.value.copy(
+                    pairedServer = null,
+                    pairedServerName = null,
+                    status = "已移除此电脑，需要重新输入验证码才能加入",
+                )
+            }.getOrElse { error ->
+                uiState.value = uiState.value.copy(status = "移除失败：${error.userMessage()}")
             }
         }
     }

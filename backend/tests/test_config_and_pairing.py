@@ -41,6 +41,9 @@ class ConfigAndPairingTests(unittest.TestCase):
             pairing = PairingService(db)
             payload = pairing.create_pairing_payload("http://192.168.1.20:8765")
 
+            self.assertRegex(payload.pairing_code, r"^\d{6}$")
+            self.assertEqual(payload.pairing_token, payload.pairing_code)
+
             with self.assertRaises(PermissionError):
                 pairing.claim_device("bad-token", "android-1", "Phone")
 
@@ -49,6 +52,21 @@ class ConfigAndPairingTests(unittest.TestCase):
             self.assertEqual(pairing.validate_bearer_token(bearer), "android-1")
             self.assertIsNone(pairing.validate_bearer_token("bad-token"))
             self.assertEqual(db.scalar("SELECT is_trusted FROM devices WHERE device_id = ?", ("android-1",)), 1)
+            db.close()
+
+    def test_revoking_device_invalidates_existing_bearer_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db = Database(Path(temp_dir) / "app.sqlite")
+            db.initialize()
+            pairing = PairingService(db)
+            payload = pairing.create_pairing_payload("http://192.168.1.20:8765")
+            bearer = pairing.claim_device(payload.pairing_code, "android-1", "Phone")
+
+            pairing.revoke_device("android-1")
+
+            self.assertIsNone(pairing.validate_bearer_token(bearer))
+            self.assertEqual(db.scalar("SELECT is_trusted FROM devices WHERE device_id = ?", ("android-1",)), 0)
+            self.assertIsNotNone(db.scalar("SELECT revoked_at FROM device_tokens WHERE device_id = ?", ("android-1",)))
             db.close()
 
 

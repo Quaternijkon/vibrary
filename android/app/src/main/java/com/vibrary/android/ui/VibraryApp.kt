@@ -1,6 +1,7 @@
 package com.vibrary.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -39,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,14 +50,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.vibrary.android.core.UploadQueueState
+import com.vibrary.android.network.DiscoveryAnnouncement
 import com.vibrary.android.network.SearchResultDto
 
 data class VibraryUiState(
     val status: String = "就绪",
     val pairedServer: String? = null,
+    val pairedServerName: String? = null,
     val selectedCount: Int = 0,
     val queuedCount: Int = 0,
+    val discoveredServers: List<DiscoveryAnnouncement> = emptyList(),
+    val uploadRows: List<UploadQueueRow> = emptyList(),
     val cleanedCacheCount: Int = 0,
     val searchResults: List<SearchResultDto> = emptyList(),
 )
@@ -66,6 +72,7 @@ data class VibraryActions(
     val onSearch: (query: String) -> Unit,
     val onOpenResult: (SearchResultDto) -> Unit,
     val onClearCache: () -> Unit,
+    val onForgetServer: () -> Unit,
 )
 
 private val VibraryColors = lightColorScheme(
@@ -92,7 +99,7 @@ fun VibraryApp(
                     title = {
                         Column {
                             Text("Vibrary 本地资料库", style = MaterialTheme.typography.titleLarge)
-                            Text(state.pairedServer ?: "未连接 Windows", style = MaterialTheme.typography.bodySmall)
+                            Text(state.pairedServerName ?: state.pairedServer ?: "正在发现附近电脑", style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -146,31 +153,66 @@ private fun PairingScreen(
     state: VibraryUiState,
     actions: VibraryActions,
 ) {
-    var serverUrl by remember { mutableStateOf(state.pairedServer ?: "http://") }
-    var pairingToken by remember { mutableStateOf("") }
+    var pairingCode by remember { mutableStateOf("") }
+    var manualServerUrl by remember { mutableStateOf("") }
+    LaunchedEffect(state.pairedServer) {
+        if (state.pairedServer != null) {
+            manualServerUrl = state.pairedServer
+        }
+    }
     ScreenColumn {
-        SectionTitle("连接 Windows")
+        SectionTitle("连接电脑")
+        Panel {
+            if (state.pairedServer != null) {
+                MetricRow("当前电脑", state.pairedServerName ?: state.pairedServer)
+                OutlinedButton(onClick = actions.onForgetServer) {
+                    Text("移除此电脑")
+                }
+            } else {
+                Text("在电脑端打开 Vibrary，输入电脑上显示的 6 位验证码加入。", style = MaterialTheme.typography.bodyMedium)
+            }
+            OutlinedTextField(
+                value = pairingCode,
+                onValueChange = { value -> pairingCode = value.filter(Char::isDigit).take(6) },
+                label = { Text("验证码") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        SectionTitle("附近可加入设备")
+        if (state.discoveredServers.isEmpty()) {
+            Panel {
+                Text("正在搜索同一局域网中的 Vibrary 电脑端。", style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            state.discoveredServers.forEach { server ->
+                Panel {
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(server.deviceName, style = MaterialTheme.typography.titleMedium)
+                            Text(server.serverUrl, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Button(onClick = { actions.onPair(server.serverUrl, pairingCode.trim()) }) {
+                            Text("加入")
+                        }
+                    }
+                }
+            }
+        }
+        SectionTitle("手动连接")
         Panel {
             OutlinedTextField(
-                value = serverUrl,
-                onValueChange = { serverUrl = it },
-                label = { Text("服务器地址") },
+                value = manualServerUrl,
+                onValueChange = { manualServerUrl = it },
+                label = { Text("电脑地址") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
-                value = pairingToken,
-                onValueChange = { pairingToken = it },
-                label = { Text("配对 token") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(onClick = { actions.onPair(serverUrl.trim(), pairingToken.trim()) }) {
+            Button(onClick = { actions.onPair(manualServerUrl.trim(), pairingCode.trim()) }) {
                 Icon(Icons.Filled.Link, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("配对")
+                Text("用验证码加入")
             }
-            MetricRow("当前服务器", state.pairedServer ?: "未配对")
         }
         StatusText(state.status)
     }
@@ -211,10 +253,15 @@ private fun UploadQueueScreen(
 ) {
     ScreenColumn {
         SectionTitle("上传队列")
-        UploadStateCard(UploadQueueState.QUEUED, "等待上传")
-        UploadStateCard(UploadQueueState.PREFLIGHT, "上传前检查")
-        UploadStateCard(UploadQueueState.UPLOADING, "正在传输")
-        UploadStateCard(UploadQueueState.SERVER_INDEXING, "等待电脑索引")
+        if (state.uploadRows.isEmpty()) {
+            Panel {
+                Text("还没有上传任务。选择文件后会在这里显示哈希、传输和电脑索引状态。")
+            }
+        } else {
+            state.uploadRows.forEach { row ->
+                UploadQueueRowCard(row)
+            }
+        }
         MetricCard("队列数量", state.queuedCount.toString(), Modifier.fillMaxWidth())
     }
 }
@@ -315,16 +362,26 @@ private fun MetricCard(label: String, value: String, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun UploadStateCard(state: UploadQueueState, subtitle: String) {
+private fun UploadQueueRowCard(row: UploadQueueRow) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(uploadStateLabel(state), style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text(row.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(row.stateLabel, color = MaterialTheme.colorScheme.secondary)
+            }
+            LinearProgressIndicator(
+                progress = { row.progressFraction },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(row.progressLabel, style = MaterialTheme.typography.bodySmall)
+            row.detail?.let { detail ->
+                Text(detail, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(subtitle, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }
@@ -365,22 +422,6 @@ private fun StatusText(status: String) {
     ) {
         Text(status, modifier = Modifier.padding(14.dp), style = MaterialTheme.typography.bodyMedium)
     }
-}
-
-private fun uploadStateLabel(state: UploadQueueState): String = when (state) {
-    UploadQueueState.QUEUED -> "等待"
-    UploadQueueState.CHECKING -> "检查"
-    UploadQueueState.HASHING -> "计算哈希"
-    UploadQueueState.PREFLIGHT -> "预检"
-    UploadQueueState.UPLOADING -> "上传中"
-    UploadQueueState.PAUSED -> "暂停"
-    UploadQueueState.RETRY_WAIT -> "等待重试"
-    UploadQueueState.UPLOADED -> "已上传"
-    UploadQueueState.SERVER_IMPORTED -> "电脑已导入"
-    UploadQueueState.SERVER_INDEXING -> "索引中"
-    UploadQueueState.SERVER_INDEXED -> "已索引"
-    UploadQueueState.FAILED -> "失败"
-    UploadQueueState.CANCELLED -> "已取消"
 }
 
 private fun deliveryLabel(mode: String): String = when (mode) {

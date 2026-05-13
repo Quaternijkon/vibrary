@@ -5,11 +5,15 @@ import androidx.room.Query
 import androidx.room.Upsert
 import com.vibrary.android.core.UploadQueueState
 import com.vibrary.android.data.entities.UploadQueueEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UploadQueueDao {
     @Query("SELECT * FROM upload_queue WHERE queue_id = :queueId LIMIT 1")
     suspend fun findById(queueId: String): UploadQueueEntity?
+
+    @Query("SELECT * FROM upload_queue ORDER BY created_at DESC")
+    fun observeAll(): Flow<List<UploadQueueEntity>>
 
     @Upsert
     suspend fun upsertAll(items: List<UploadQueueEntity>)
