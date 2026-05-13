@@ -17,6 +17,7 @@ import {
   UploadCloud
 } from "lucide-react";
 import { BackendClient, type Device, type ImportSummary, type PairingPayload, type QueueItem, type SearchResult } from "./backendClient";
+import { loadBackendDashboardData } from "./backendData";
 import { desktopCopy } from "./uiCopy";
 import "./styles.css";
 
@@ -55,19 +56,17 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!client) return;
     const timer = window.setInterval(() => {
-      void refreshBackendData(client);
+      void refresh();
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [client]);
+  }, []);
 
   async function refresh() {
     const nextSnapshot = await window.vibraryDesktop.getSnapshot();
     setSnapshot(nextSnapshot);
     const activeClient = new BackendClient(nextSnapshot.backendUrl);
     await refreshBackendData(activeClient);
-    await refreshPairingPayload(activeClient);
   }
 
   async function startServices() {
@@ -75,7 +74,6 @@ function App() {
     setSnapshot(nextSnapshot);
     const activeClient = new BackendClient(nextSnapshot.backendUrl);
     await refreshBackendData(activeClient);
-    await refreshPairingPayload(activeClient);
   }
 
   async function stopServices() {
@@ -114,16 +112,12 @@ function App() {
 
   async function refreshBackendData(activeClient = client) {
     if (!activeClient) return;
-    const [nextUploads, nextIndexJobs, nextCache, nextDevices] = await Promise.all([
-      activeClient.uploadsQueue().catch(() => []),
-      activeClient.indexingQueue().catch(() => []),
-      activeClient.cacheSummary().catch(() => ({})),
-      activeClient.devices().catch(() => [])
-    ]);
-    setUploads(nextUploads);
-    setIndexJobs(nextIndexJobs);
-    setCacheSummary(nextCache);
-    setDevices(nextDevices);
+    const nextData = await loadBackendDashboardData(activeClient);
+    setUploads(nextData.uploads);
+    setIndexJobs(nextData.indexJobs);
+    setCacheSummary(nextData.cacheSummary);
+    setDevices(nextData.devices);
+    setPairingPayload(nextData.pairingPayload);
   }
 
   async function refreshPairingPayload(activeClient = client) {
@@ -143,7 +137,6 @@ function App() {
     setSnapshot(nextSnapshot);
     const activeClient = new BackendClient(nextSnapshot.backendUrl);
     await refreshBackendData(activeClient);
-    await refreshPairingPayload(activeClient);
     setMessage("设置已保存，后台服务已按新设置重启");
   }
 
@@ -209,8 +202,8 @@ function App() {
         </header>
 
         <section id="status" className="status-grid">
-          <StatusTile title="Qdrant" detail={desktopCopy.status.qdrantDetail} status={qdrant?.running ? "running" : "stopped"} label={qdrant?.running ? desktopCopy.status.running : desktopCopy.status.stopped} />
-          <StatusTile title="Backend" detail={snapshot?.backendUrl ?? "127.0.0.1:8765"} status={backend?.running ? "running" : "stopped"} label={backend?.running ? desktopCopy.status.running : desktopCopy.status.stopped} />
+          <StatusTile title="Qdrant" detail={desktopCopy.status.qdrantDetail} status={qdrant?.running ? "running" : "stopped"} label={serviceStatusLabel(qdrant)} />
+          <StatusTile title="Backend" detail={snapshot?.backendUrl ?? "127.0.0.1:8765"} status={backend?.running ? "running" : "stopped"} label={serviceStatusLabel(backend)} />
           <StatusTile
             title={desktopCopy.status.lanApi}
             detail={snapshot?.settings.lanEnabled ? snapshot.publicUrl : "仅允许本机访问"}
@@ -294,6 +287,12 @@ function StatusTile(props: { title: string; detail: string; status: string; labe
       <strong>{props.label}</strong>
     </article>
   );
+}
+
+function serviceStatusLabel(service: Snapshot["services"][number] | undefined): string {
+  if (!service) return desktopCopy.status.stopped;
+  if (service.running) return desktopCopy.status.running;
+  return service.error ?? desktopCopy.status.stopped;
 }
 
 function Metric(props: { label: string; value: number | string }) {

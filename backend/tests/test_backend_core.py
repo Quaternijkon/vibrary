@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vibrary_backend.cache import CacheService
-from vibrary_backend.config import AppPaths
+from vibrary_backend.config import AppPaths, IMAGE_COLLECTION
 from vibrary_backend.database import Database
 from vibrary_backend.indexing import IndexService
 from vibrary_backend.library import LibraryService
@@ -67,6 +67,36 @@ class BackendCoreTests(unittest.TestCase):
         self.assertEqual(self.db.scalar("SELECT COUNT(*) FROM index_jobs"), 1)
         self.assertTrue(library_path.exists())
         self.assertEqual(library_path.read_bytes(), b"red car document\n")
+
+    def test_duplicate_import_requeues_index_when_existing_asset_is_not_searchable(self) -> None:
+        source = self.write_file("needs-reindex.txt", b"rebuild missing vector")
+        imported = self.library.import_path(source, device_id="windows-local")
+        asset_id = imported.assets[0].asset_id
+
+        self.db.execute("DELETE FROM index_jobs WHERE asset_id = ?", (asset_id,))
+        self.db.execute("DELETE FROM qdrant_points WHERE asset_id = ?", (asset_id,))
+        self.db.execute("DELETE FROM search_documents WHERE asset_id = ?", (asset_id,))
+        self.db.execute("UPDATE assets SET index_status = 'failed' WHERE asset_id = ?", (asset_id,))
+
+        duplicate = self.library.import_path(source, device_id="windows-local")
+
+        self.assertEqual(duplicate.duplicate_count, 1)
+        self.assertEqual(duplicate.index_queued_count, 1)
+        self.assertEqual(self.db.scalar("SELECT status FROM index_jobs WHERE asset_id = ?", (asset_id,)), "queued")
+        self.assertEqual(self.db.scalar("SELECT index_status FROM assets WHERE asset_id = ?", (asset_id,)), "queued")
+
+    def test_image_import_queues_and_indexes_image_semantic_collection(self) -> None:
+        source = self.write_file("photo.png", b"\x89PNG\r\n\x1a\nminimal-test-image")
+        imported = self.library.import_path(source, device_id="windows-local")
+
+        self.assertEqual(imported.index_queued_count, 1)
+        self.assertEqual(self.db.scalar("SELECT job_type FROM index_jobs"), "image")
+
+        processed = self.indexer.process_next(limit=5)
+
+        self.assertEqual(processed.indexed_count, 1)
+        self.assertEqual(self.vector_store.upsert_calls[0].collection_name, IMAGE_COLLECTION)
+        self.assertEqual(self.vector_store.upsert_calls[0].points[0].asset_id, imported.assets[0].asset_id)
 
     def test_resumable_upload_complete_imports_asset_and_is_idempotent(self) -> None:
         content = b"chunk-one::chunk-two"

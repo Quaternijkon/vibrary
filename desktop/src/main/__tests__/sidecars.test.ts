@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import {
   SidecarManager,
@@ -91,6 +92,23 @@ describe("SidecarManager", () => {
 
     expect(kill).toHaveBeenCalledWith("SIGTERM");
     expect(manager.status()).toEqual([{ name: "qdrant", pid: 42, running: false }]);
+  });
+
+  it("marks a sidecar as stopped when the child process exits unexpectedly", async () => {
+    const child = Object.assign(new EventEmitter(), { pid: 99, kill: vi.fn() });
+    const spawner: ProcessSpawner = vi.fn(() => child);
+    const manager = new SidecarManager(spawner, () => true);
+
+    await manager.start("backend", {
+      file: "backend.exe",
+      args: [],
+      env: {}
+    });
+    child.emit("exit", 1, null);
+
+    expect(manager.status()).toEqual([
+      { name: "backend", pid: 99, running: false, exitCode: 1, error: "backend exited with code 1" }
+    ]);
   });
 });
 

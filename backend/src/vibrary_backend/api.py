@@ -7,7 +7,7 @@ from typing import Any
 import urllib.error
 import urllib.request
 
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
@@ -139,7 +139,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.0")
+    app = FastAPI(title="Vibrary Backend", version="0.1.1")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,
@@ -271,7 +271,7 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
         return {"status": "cancelled"}
 
     @app.post("/v1/imports/windows/files")
-    def import_windows_files(request: WindowsImportRequest) -> dict[str, Any]:
+    def import_windows_files(request: WindowsImportRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
         totals: dict[str, Any] = {"scanned_count": 0, "imported_count": 0, "duplicate_count": 0, "failed_count": 0, "index_queued_count": 0, "assets": []}
         for raw in request.paths:
             result = services.library.import_path(Path(raw), "windows-local")
@@ -281,11 +281,13 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             totals["failed_count"] += result.failed_count
             totals["index_queued_count"] += result.index_queued_count
             totals["assets"].extend(asset.__dict__ | {"library_path": str(asset.library_path)} for asset in result.assets)
+        _schedule_indexing_kick(background_tasks, services, int(totals["index_queued_count"]))
         return totals
 
     @app.post("/v1/imports/windows/folder")
-    def import_windows_folder(request: FolderImportRequest) -> dict[str, Any]:
+    def import_windows_folder(request: FolderImportRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
         result = services.library.import_path(Path(request.path), "windows-local")
+        _schedule_indexing_kick(background_tasks, services, result.index_queued_count)
         return result.__dict__ | {"assets": [asset.__dict__ | {"library_path": str(asset.library_path)} for asset in result.assets]}
 
     @app.get("/v1/imports/{import_id}/status")
@@ -405,6 +407,17 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
 
 def _requires_remote_device_binding(path: str) -> bool:
     return path.startswith("/v1/assets/") and path.endswith("/content")
+
+
+def _schedule_indexing_kick(background_tasks: BackgroundTasks, services: Services, queued_count: int) -> None:
+    if queued_count <= 0 or not services.settings.auto_index:
+        return
+    background_tasks.add_task(_process_index_queue_once, services)
+
+
+def _process_index_queue_once(services: Services) -> None:
+    if _vector_store_ready(services):
+        services.indexer.process_next(5)
 
 
 async def _auto_index_loop(services: Services) -> None:

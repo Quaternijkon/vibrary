@@ -4,6 +4,9 @@ export type ServiceStatus = {
   name: "qdrant" | "backend";
   pid?: number;
   running: boolean;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  error?: string;
 };
 
 export type DesktopSnapshot = {

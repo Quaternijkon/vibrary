@@ -73,6 +73,8 @@ class LibraryService:
                 else:
                     library_path = self.paths.resolve_data_path(str(library_row["relative_path"]))
                 self._add_library_ref(device_id, asset_id, version_id, display_name, size_bytes, content_sha)
+                if self._queue_index_job(asset_id, version_id, ext, mime_type):
+                    result.index_queued_count += 1
                 result.assets.append(ImportedAsset(asset_id, version_id, content_sha, library_path))
                 return
 
@@ -153,9 +155,6 @@ class LibraryService:
         )
 
     def _queue_index_job(self, asset_id: str, version_id: str, ext: str, mime_type: str) -> bool:
-        existing = self.db.scalar("SELECT COUNT(*) FROM index_jobs WHERE asset_id = ? AND asset_version_id = ?", (asset_id, version_id))
-        if existing:
-            return False
         lowered_mime = mime_type.lower()
         if ext in IMAGE_EXTENSIONS or lowered_mime.startswith("image/"):
             job_type = "image"
@@ -165,6 +164,34 @@ class LibraryService:
             job_type = "text"
         else:
             job_type = "text"
+        existing = self.db.one(
+            """
+            SELECT * FROM index_jobs
+            WHERE asset_id = ? AND asset_version_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (asset_id, version_id),
+        )
+        if existing:
+            if str(existing["status"]) in {"queued", "indexing", "retry_wait"}:
+                return False
+            if self._asset_is_searchable(asset_id, version_id):
+                return False
+            self.db.execute(
+                """
+                UPDATE index_jobs
+                SET job_type = ?, status = 'queued', priority = 100, parser_version = 'parser_v1',
+                    embedding_profile_id = ?, started_at = NULL, completed_at = NULL,
+                    error_message = NULL, retry_count = 0
+                WHERE index_job_id = ?
+                """,
+                (job_type, DEFAULT_EMBEDDING_PROFILE, existing["index_job_id"]),
+            )
+            self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (asset_id,))
+            return True
+        if self._asset_is_searchable(asset_id, version_id):
+            return False
         self.db.execute(
             """
             INSERT INTO index_jobs(
@@ -175,4 +202,19 @@ class LibraryService:
             """,
             (new_id("idx"), asset_id, version_id, job_type, DEFAULT_EMBEDDING_PROFILE, utc_now()),
         )
+        self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (asset_id,))
         return True
+
+    def _asset_is_searchable(self, asset_id: str, version_id: str) -> bool:
+        index_status = self.db.scalar("SELECT index_status FROM assets WHERE asset_id = ?", (asset_id,))
+        if index_status != "indexed":
+            return False
+        search_count = self.db.scalar(
+            "SELECT COUNT(*) FROM search_documents WHERE asset_id = ? AND asset_version_id = ?",
+            (asset_id, version_id),
+        )
+        point_count = self.db.scalar(
+            "SELECT COUNT(*) FROM qdrant_points WHERE asset_id = ? AND asset_version_id = ?",
+            (asset_id, version_id),
+        )
+        return bool(search_count and point_count)

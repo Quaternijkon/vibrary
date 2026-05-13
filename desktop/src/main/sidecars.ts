@@ -13,6 +13,8 @@ export type SidecarCommand = {
 export type SpawnedProcess = {
   pid?: number;
   kill: (signal?: NodeJS.Signals) => boolean | void;
+  on?: (event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void) => unknown;
+  once?: (event: "error", listener: (error: Error) => void) => unknown;
 };
 
 export type ProcessSpawner = (
@@ -27,6 +29,9 @@ export type SidecarStatus = {
   name: SidecarName;
   pid?: number;
   running: boolean;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  error?: string;
 };
 
 export function buildQdrantCommand(input: {
@@ -102,6 +107,32 @@ export class SidecarManager {
       pid: child.pid,
       running: true
     });
+    child.on?.("exit", (code, signal) => {
+      if (this.processes.get(name) !== child) {
+        return;
+      }
+      this.processes.delete(name);
+      this.statuses.set(name, {
+        name,
+        pid: child.pid,
+        running: false,
+        exitCode: code,
+        ...(signal ? { signal } : {}),
+        error: formatExitMessage(name, code, signal)
+      });
+    });
+    child.once?.("error", (error) => {
+      if (this.processes.get(name) !== child) {
+        return;
+      }
+      this.processes.delete(name);
+      this.statuses.set(name, {
+        name,
+        pid: child.pid,
+        running: false,
+        error: `${name} failed to start: ${error.message}`
+      });
+    });
   }
 
   async stop(name: SidecarName): Promise<void> {
@@ -127,6 +158,16 @@ export class SidecarManager {
   status(): SidecarStatus[] {
     return [...this.statuses.values()];
   }
+}
+
+function formatExitMessage(name: SidecarName, code: number | null, signal: NodeJS.Signals | null): string {
+  if (code !== null) {
+    return `${name} exited with code ${code}`;
+  }
+  if (signal) {
+    return `${name} exited after signal ${signal}`;
+  }
+  return `${name} exited`;
 }
 
 function defaultSpawner(
