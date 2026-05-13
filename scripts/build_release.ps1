@@ -284,6 +284,10 @@ function Build-AndroidApk() {
 function Write-ReleaseManifest() {
   Write-Step "Writing release manifest and checksums"
   Ensure-Directory $ReleaseRoot | Out-Null
+  $manual = Join-Path $RepoRoot "docs\USER_MANUAL_zh-CN.md"
+  if (Test-Path -LiteralPath $manual) {
+    Copy-Item -LiteralPath $manual -Destination (Join-Path $ReleaseRoot "Vibrary_User_Manual_zh-CN.md") -Force
+  }
   $files = Get-ChildItem -LiteralPath $ReleaseRoot -Recurse -File | Sort-Object FullName
   $manifest = @()
   $checksumLines = @()

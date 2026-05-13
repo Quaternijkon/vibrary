@@ -3,6 +3,12 @@
 Vibrary is a local-first library and search MVP based on
 `qdrant_android_windows_agent_plan_v2.md`.
 
+User-facing Chinese manual:
+
+```text
+docs/USER_MANUAL_zh-CN.md
+```
+
 The system is split as `backend-core + clients`:
 
 - `backend/`: backend-core. It is the Windows-only FastAPI service with SQLite persistence, asset
