@@ -105,19 +105,20 @@ class MainActivity : ComponentActivity() {
             uiState.value = uiState.value.copy(
                 selectedCount = uiState.value.selectedCount + documents.size,
                 queuedCount = uiState.value.queuedCount + documents.size,
-                status = "Queued ${documents.size} item(s)",
+                status = "已加入上传队列 ${documents.size} 项",
             )
         }
     }
 
     private fun pairServer(serverUrl: String, pairingToken: String) {
         if (serverUrl.isBlank() || pairingToken.isBlank()) {
-            uiState.value = uiState.value.copy(status = "Server URL and pairing token are required")
+            uiState.value = uiState.value.copy(status = "请输入服务器地址和配对 token")
             return
         }
         lifecycleScope.launch {
             runCatching {
-                val api = ApiClientFactory.create(serverUrl)
+                val normalizedServerUrl = com.vibrary.android.network.normalizeRetrofitBaseUrl(serverUrl).trimEnd('/')
+                val api = ApiClientFactory.create(normalizedServerUrl)
                 val response = api.claimPairing(
                     PairingClaimRequest(
                         deviceId = deviceId(),
@@ -129,7 +130,7 @@ class MainActivity : ComponentActivity() {
                 database.pairedServerDao().upsert(
                     PairedServerEntity(
                         pairedServerId = UUID.randomUUID().toString(),
-                        baseUrl = serverUrl.trimEnd('/'),
+                        baseUrl = normalizedServerUrl,
                         deviceId = deviceId(),
                         pairingToken = response.deviceToken,
                         displayName = "Windows Vibrary",
@@ -138,9 +139,9 @@ class MainActivity : ComponentActivity() {
                         lastSeenAt = Instant.now().toString(),
                     ),
                 )
-                uiState.value = uiState.value.copy(pairedServer = serverUrl.trimEnd('/'), status = "Paired")
+                uiState.value = uiState.value.copy(pairedServer = normalizedServerUrl, status = "已配对")
             }.getOrElse { error ->
-                uiState.value = uiState.value.copy(status = "Pairing failed: ${error.message}")
+                uiState.value = uiState.value.copy(status = "配对失败：${error.userMessage()}")
             }
         }
     }
@@ -160,9 +161,9 @@ class MainActivity : ComponentActivity() {
                         filters = SearchFilters(),
                     ),
                 )
-                uiState.value = uiState.value.copy(searchResults = response.results, status = "${response.results.size} result(s)")
+                uiState.value = uiState.value.copy(searchResults = response.results, status = "找到 ${response.results.size} 条结果")
             }.getOrElse { error ->
-                uiState.value = uiState.value.copy(status = "Search failed: ${error.message}")
+                uiState.value = uiState.value.copy(status = "搜索失败：${error.userMessage()}")
             }
         }
     }
@@ -187,9 +188,9 @@ class MainActivity : ComponentActivity() {
                     bearerToken = server.pairingToken,
                 )
                 handler.handle(result.copy(delivery = resolved.delivery, availability = resolved.availability))
-                uiState.value = uiState.value.copy(status = "Opened ${result.title}")
+                uiState.value = uiState.value.copy(status = "已打开 ${result.title}")
             }.getOrElse { error ->
-                uiState.value = uiState.value.copy(status = "Open failed: ${error.message}")
+                uiState.value = uiState.value.copy(status = "打开失败：${error.userMessage()}")
             }
         }
     }
@@ -199,14 +200,14 @@ class MainActivity : ComponentActivity() {
             val report = withContext(Dispatchers.IO) { cacheManager.cleanupAppCacheOnly() }
             uiState.value = uiState.value.copy(
                 cleanedCacheCount = uiState.value.cleanedCacheCount + report.deletedEntryIds.size,
-                status = "Cleaned ${report.deletedEntryIds.size} cache entrie(s)",
+                status = "已清理 ${report.deletedEntryIds.size} 个缓存条目",
             )
         }
     }
 
     private suspend fun activeServerOrError(): PairedServerEntity =
         (application as VibraryApplication).database.pairedServerDao().activeServer()
-            ?: error("No paired server")
+            ?: error("尚未配对 Windows")
 
     private fun deviceId(): String {
         val preferences = getSharedPreferences("vibrary", MODE_PRIVATE)
@@ -216,4 +217,6 @@ class MainActivity : ComponentActivity() {
         preferences.edit().putString("device_id", created).apply()
         return created
     }
+
+    private fun Throwable.userMessage(): String = localizedMessage ?: message ?: javaClass.simpleName
 }

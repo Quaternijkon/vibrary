@@ -6,6 +6,8 @@
         android:name=".VibraryApplication"
         android:allowBackup="true"
         android:label="Vibrary"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Vibrary">
         <activity
             android:name=".MainActivity"

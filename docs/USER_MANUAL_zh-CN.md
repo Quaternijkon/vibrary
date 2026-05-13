@@ -95,7 +95,7 @@ Android 选择文件或文件夹后，不会立刻把文件都塞进界面。它
 
 索引队列：
 
-Windows 收到文件并复制到资料库后，会生成索引任务。索引任务负责解析文件、生成 embedding、写入 Qdrant。当前桌面端提供手动 `Process` 按钮处理索引队列。
+Windows 收到文件并复制到资料库后，会生成索引任务。索引任务负责解析文件、生成 embedding、写入 Qdrant。当前桌面端提供手动 `处理索引` 按钮处理索引队列。
 
 缓存：
 
@@ -108,17 +108,17 @@ Windows 收到文件并复制到资料库后，会生成索引任务。索引任
 1. 打开 `release/desktop/`。
 2. 双击 `Vibrary 0.1.0.exe`。
 3. 等待顶部状态区显示 Qdrant 和 Backend 正在运行。
-4. 在 `Library Import` 区域点击 `Choose Files` 或 `Choose Folder`。
-5. 导入完成后，到 `Index Queue` 区域点击 `Process`。
-6. 在 `Search` 区域输入关键词并点击 `Search`。
+4. 在 `资料导入` 区域点击 `选择文件` 或 `选择文件夹`。
+5. 导入完成后，到 `索引队列` 区域点击 `处理索引`。
+6. 在 `搜索` 区域输入关键词并点击 `搜索`。
 
 Windows + Android 使用：
 
 1. 在 Windows 上启动桌面端。
 2. 如果需要手机连接，建议用局域网模式启动桌面端，见“7. Windows 与 Android 配对”。
 3. 在 Android 上安装并打开 `Vibrary-debug.apk`。
-4. 在 Android 的 `Pair` 页面输入 Windows 后端地址和配对 token。
-5. 在 Android 的 `Select` 页面选择文件或文件夹。
+4. 在 Android 的 `配对` 页面输入 Windows 后端地址和配对 token。
+5. 在 Android 的 `资料` 页面选择文件或文件夹。
 6. 文件进入 Android 上传队列后，等待上传到 Windows。
 7. 在 Windows 桌面端处理索引队列。
 8. 在 Android 或 Windows 上搜索资料。
@@ -134,16 +134,16 @@ Windows + Android 使用：
 
 桌面顶部按钮：
 
-- `Refresh`：刷新服务状态、上传队列、索引队列和缓存统计。
-- `Start`：启动 Qdrant 和 Backend sidecar。如果已经启动，不会重复启动。
-- `Stop`：停止由桌面端管理的 sidecar。
+- `刷新`：刷新服务状态、上传队列、索引队列和缓存统计。
+- `启动服务`：启动 Qdrant 和 Backend sidecar。如果已经启动，不会重复启动。
+- `停止服务`：停止由桌面端管理的 sidecar。
 
 状态区：
 
 - `Qdrant`：显示 Qdrant 是否运行。
 - `Backend`：显示后端地址。
-- `LAN API`：提示后端可在显式开启后用于局域网访问。
-- `Data Root`：显示数据目录模式和位置。
+- `局域网 API`：提示后端可在显式开启后用于局域网访问。
+- `数据目录`：显示数据目录模式和位置。
 
 ### 5.2 数据保存位置
 
@@ -178,9 +178,9 @@ portable.flag
 
 ### 5.3 导入 Windows 文件
 
-在 `Library Import` 区域：
+在 `资料导入` 区域：
 
-1. 点击 `Choose Files`。
+1. 点击 `选择文件`。
 2. 在系统文件选择器中选择一个或多个文件。
 3. 确认后，桌面端会把文件路径提交给后端。
 4. 后端会计算内容哈希，把文件复制到 Windows 资料库正本目录。
@@ -188,15 +188,15 @@ portable.flag
 
 导入结果指标：
 
-- `Files selected`：本次选择的文件数量。
-- `Imported`：实际进入资料库的新文件数量。
-- `Duplicates`：检测到的重复文件数量。
+- `已选文件`：本次选择的文件数量。
+- `已导入`：实际进入资料库的新文件数量。
+- `重复`：检测到的重复文件数量。
 
 ### 5.4 导入 Windows 文件夹
 
-在 `Library Import` 区域：
+在 `资料导入` 区域：
 
-1. 点击 `Choose Folder`。
+1. 点击 `选择文件夹`。
 2. 选择一个文件夹。
 3. 后端会递归扫描文件夹。
 4. 每个可导入文件都会先复制到 Windows 资料库正本，再进入索引队列。
@@ -209,7 +209,7 @@ portable.flag
 
 ### 5.5 查看上传队列
 
-`Upload Queue` 显示 Android 上传到 Windows 的任务。常见状态：
+`上传队列` 显示 Android 上传到 Windows 的任务。常见状态：
 
 - `queued`：等待处理。
 - `preflight`：上传前检查。
@@ -222,24 +222,24 @@ Windows 本地导入不会经过 Android 上传队列，但会进入索引队列
 
 ### 5.6 处理索引队列
 
-`Index Queue` 显示等待索引的文件。
+`索引队列` 显示等待索引的文件。
 
 操作方式：
 
-1. 导入文件或 Android 上传完成后，点击 `Refresh`。
-2. 如果 `Index Queue` 中出现任务，点击 `Process`。
-3. 每次 `Process` 默认处理一批任务。
-4. 处理完成后底部消息栏会显示 `Indexed X, failed Y`。
-5. 如果仍有任务，继续点击 `Process`，直到队列清空或失败项需要排查。
+1. 导入文件或 Android 上传完成后，点击 `刷新`。
+2. 如果 `索引队列` 中出现任务，点击 `处理索引`。
+3. 每次 `处理索引` 默认处理一批任务。
+4. 处理完成后底部消息栏会显示已索引数量和失败数量。
+5. 如果仍有任务，继续点击 `处理索引`，直到队列清空或失败项需要排查。
 
 索引过程中会使用 FastEmbed 生成向量，并写入 Qdrant。首次使用模型时可能需要下载模型文件，因此第一次索引可能更慢。
 
 ### 5.7 搜索
 
-在 `Search` 区域：
+在 `搜索` 区域：
 
 1. 在输入框中输入关键词。
-2. 点击 `Search`。
+2. 点击 `搜索`。
 3. 结果列表会显示文件标题、结果分数、后端推荐的传输方式和本地副本策略。
 
 搜索覆盖：
@@ -248,13 +248,13 @@ Windows 本地导入不会经过 Android 上传队列，但会进入索引队列
 - 图片语义检索的后端接口路径。
 - 来源感知结果解析。
 
-当前 Windows 桌面界面主要用于展示搜索结果和传输策略。Android 端提供结果 `Open` 操作。Windows 后端已经具备 `open_library` / `download_to_cache` 等解析策略；后续桌面 UI 可以继续补直接打开结果文件的按钮。
+当前 Windows 桌面界面主要用于展示搜索结果和传输策略。Android 端提供结果 `打开` 操作。Windows 后端已经具备 `open_library` / `download_to_cache` 等解析策略；后续桌面 UI 可以继续补直接打开结果文件的按钮。
 
 ### 5.8 缓存管理
 
-`Cache` 区域显示下载缓存大小，并提供：
+`缓存` 区域显示下载缓存大小，并提供：
 
-- `Clear Downloads`：清理 Windows 端应用拥有的下载缓存。
+- `清理下载缓存`：清理 Windows 端应用拥有的下载缓存。
 
 清理缓存不会删除：
 
@@ -265,25 +265,25 @@ Windows 本地导入不会经过 Android 上传队列，但会进入索引队列
 - SQLite 元数据。
 - FastEmbed 模型。
 
-### 5.9 Devices / Models / Settings 面板
+### 5.9 设备 / 模型 / 设置面板
 
 当前版本中，这些面板主要作为功能入口和状态说明：
 
-- `Devices`：设备配对、可信 Android 客户端和最近在线状态的入口。
-- `Models`：embedding 模型、版本和本地可用性的入口。
-- `Settings`：便携模式、数据目录、后端 URL 和 LAN 分享设置的入口。
+- `设备`：设备配对、可信 Android 客户端和最近在线状态的入口。
+- `模型`：embedding 模型、版本和本地可用性的入口。
+- `设置`：便携模式、数据目录、后端 URL 和 LAN 分享设置的入口。
 
 MVP 中部分设置已经由配置和环境变量支持，但图形化设置项仍处于基础阶段。
 
 ## 6. Android 客户端
 
-Android 底部有五个页面：
+Android 默认使用中文界面，底部有五个页面：
 
-- `Pair`
-- `Select`
-- `Queue`
-- `Search`
-- `Cache`
+- `配对`
+- `资料`
+- `队列`
+- `搜索`
+- `缓存`
 
 ### 6.1 安装 Android APK
 
@@ -294,13 +294,13 @@ Android 底部有五个页面：
 
 当前交付的是 debug APK，适合测试和内部使用。正式发布前建议配置 release 签名。
 
-### 6.2 Pair 页面：配对 Windows
+### 6.2 配对页面：配对 Windows
 
 页面字段：
 
-- `Server URL`：Windows 后端地址。
-- `Pairing token`：Windows 后端生成的一次性配对 token。
-- `Pair`：提交配对。
+- `服务器地址`：Windows 后端地址。可以输入完整地址，例如 `http://192.168.1.23:8765`；也可以只输入 `192.168.1.23:8765`，Android 会自动补 `http://`。
+- `配对 token`：Windows 后端生成的一次性配对 token。
+- `配对`：提交配对。
 
 配对成功后：
 
@@ -310,12 +310,12 @@ Android 底部有五个页面：
 
 配对 token 默认有效期约 10 分钟。过期后需要重新生成。
 
-### 6.3 Select 页面：选择手机文件或文件夹
+### 6.3 资料页面：选择手机文件或文件夹
 
 按钮：
 
-- `Files`：选择一个或多个文件。
-- `Folder`：选择一个文件夹。
+- `选择文件`：选择一个或多个文件。
+- `选择文件夹`：选择一个文件夹。
 
 选择文件后：
 
@@ -332,7 +332,7 @@ Android 底部有五个页面：
 
 注意：选择文件或文件夹并不会把原文件复制到 Android 应用内部存储。原始文件仍在原位置，Vibrary 保存的是系统授权引用。
 
-### 6.4 Queue 页面：查看上传状态
+### 6.4 队列页面：查看上传状态
 
 页面展示上传流程状态：
 
@@ -349,20 +349,20 @@ Android 底部有五个页面：
 - 每个分片有独立 SHA-256 校验。
 - 如果上传中断，下次可以跳过服务端已收到的分片。
 
-### 6.5 Search 页面：搜索资料
+### 6.5 搜索页面：搜索资料
 
 操作方式：
 
 1. 输入关键词。
-2. 点击 `Search`。
+2. 点击 `搜索`。
 3. Android 会向当前配对的 Windows 后端发起搜索。
 4. 搜索结果会显示标题和推荐动作。
 
-如果没有配对服务器，搜索会失败并显示 `No paired server` 或相关错误。
+如果没有配对服务器，搜索会失败并显示“尚未配对 Windows”或相关错误。
 
 ### 6.6 打开搜索结果
 
-在搜索结果卡片上点击 `Open`。
+在搜索结果卡片上点击 `打开`。
 
 Vibrary 会按以下顺序处理：
 
@@ -374,11 +374,11 @@ Vibrary 会按以下顺序处理：
 
 这种策略可以避免重复传输，也避免因为原文件被删除导致资料库搜索结果不可用。
 
-### 6.7 Cache 页面：清理 Android 缓存
+### 6.7 缓存页面：清理 Android 缓存
 
 按钮：
 
-- `Clean app cache`
+- `清理应用缓存`
 
 该操作只清理 Android 应用自己创建的缓存条目。不会删除：
 
@@ -425,11 +425,13 @@ http://127.0.0.1:8765/v1/pairing/qr
 }
 ```
 
-把 `server_url` 填入 Android `Pair` 页面的 `Server URL`。
-把 `pairing_token` 填入 Android `Pair` 页面的 `Pairing token`。
-然后点击 Android 上的 `Pair`。
+把 `server_url` 填入 Android `配对` 页面的 `服务器地址`。
+把 `pairing_token` 填入 Android `配对` 页面的 `配对 token`。
+然后点击 Android 上的 `配对`。
 
 如果 `server_url` 返回的是 `http://127.0.0.1:8765`，说明桌面端不是局域网模式启动。请关闭桌面端，用 `VIBRARY_ENABLE_LAN=1` 重新启动。
+
+Android 当前版本允许对 localhost、`.local` 和局域网私有地址使用 HTTP 明文连接，以支持 `http://192.168.x.x:8765` 这类本地配对地址。应用会拒绝公网域名的 HTTP 地址；公网地址必须使用 HTTPS。
 
 ### 7.3 配对失败排查
 
@@ -440,7 +442,8 @@ http://127.0.0.1:8765/v1/pairing/qr
 - Windows 是否以局域网模式启动。
 - Windows 防火墙是否允许访问。
 - `pairing_token` 是否过期。
-- Android 输入的 `Server URL` 是否包含 `http://` 和端口，例如 `http://192.168.1.23:8765`。
+- Android 输入的 `服务器地址` 是否包含端口，例如 `http://192.168.1.23:8765` 或 `192.168.1.23:8765`。
+- 如果旧版 APK 显示 `CLEARTEXT communication ... not permitted by network security policy`，请安装更新后的 APK；新版已允许局域网 HTTP 配对。
 
 ## 8. 搜索结果和传输策略
 
@@ -486,10 +489,10 @@ Vibrary 的目标是：能本地打开就本地打开，只有需要时才传输
 
 先确认：
 
-1. `Service Status` 中 Qdrant 和 Backend 是否运行。
-2. 是否已经通过 `Choose Files` 或 `Choose Folder` 导入资料。
-3. `Index Queue` 是否还有待处理任务。
-4. 是否点击过 `Process`。
+1. `服务状态` 中 Qdrant 和 Backend 是否运行。
+2. 是否已经通过 `选择文件` 或 `选择文件夹` 导入资料。
+3. `索引队列` 是否还有待处理任务。
+4. 是否点击过 `处理索引`。
 5. 搜索关键词是否过短或与资料内容无关。
 
 ### 10.2 Qdrant 端口 6333 被占用怎么办
@@ -583,7 +586,7 @@ Vibrary 会在本地引用失效时尝试从 Windows 下载缓存副本。如果
 当前需要注意：
 
 - Windows 桌面端搜索结果当前主要展示结果和交付策略，尚未提供完整的结果行直接打开按钮。
-- Windows `Devices`、`Models`、`Settings` 面板是基础入口，部分高级设置仍通过环境变量或后端接口完成。
+- Windows `设备`、`模型`、`设置` 面板是基础入口，部分高级设置仍通过环境变量或后端接口完成。
 - Android APK 是 debug 构建，正式对外发布前建议做 release 签名。
 - 首次索引可能需要下载 embedding 模型，受网络环境影响。
 
