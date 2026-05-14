@@ -29,6 +29,7 @@ from .vector_store import InMemoryVectorStore, QdrantVectorStore, VectorStore
 DESKTOP_RENDERER_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    "file://",
     "null",
 ]
 
@@ -139,7 +140,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.1")
+    app = FastAPI(title="Vibrary Backend", version="0.1.2")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,

@@ -76,6 +76,13 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertEqual(response.headers.get("access-control-allow-origin"), "null")
         self.assertRegex(response.json()["pairing_code"], r"^\d{6}$")
 
+    def test_packaged_file_protocol_renderer_origin_can_fetch_pairing_code_over_cors(self) -> None:
+        response = self.local_client.get("/v1/pairing/qr", headers={"Origin": "file://"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("access-control-allow-origin"), "file://")
+        self.assertRegex(response.json()["pairing_code"], r"^\d{6}$")
+
     def test_remote_claim_can_use_local_pairing_token_then_token_is_bound_to_device(self) -> None:
         qr = self.local_client.get("/v1/pairing/qr").json()
         self.assertRegex(qr["pairing_code"], r"^\d{6}$")
