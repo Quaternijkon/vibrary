@@ -205,6 +205,44 @@ class BackendCoreTests(unittest.TestCase):
         local_result = self.search.search(device_id="android-1", query="red car", limit=5)
         self.assertEqual(local_result["results"][0]["delivery"]["mode"], "local_reference")
 
+    def test_library_center_lists_assets_with_sources_and_thumbnail_urls(self) -> None:
+        imported = self.library.import_path(self.write_file("photos/cat.jpg", b"fake-jpeg-bytes"), device_id="windows-local")
+        self.indexer.process_next(limit=5)
+        self.db.add_device_asset_ref(
+            device_id="android-1",
+            asset_id=imported.assets[0].asset_id,
+            asset_version_id=imported.assets[0].asset_version_id,
+            ref_type="source_original",
+            local_ref_id="android-photo",
+            display_name="cat.jpg",
+            size_bytes=len(b"fake-jpeg-bytes"),
+            content_sha256=imported.assets[0].content_sha256,
+            permission_status="granted",
+        )
+
+        listing = self.library.list_assets(self.resolver, device_id="android-1")
+
+        self.assertEqual(listing["total_count"], 1)
+        asset = listing["assets"][0]
+        self.assertEqual(asset["asset_id"], imported.assets[0].asset_id)
+        self.assertEqual(asset["title"], "cat.jpg")
+        self.assertEqual(asset["kind"], "image")
+        self.assertEqual(asset["thumbnail_url"], f"/v1/assets/{imported.assets[0].asset_id}/thumbnail")
+        self.assertEqual(asset["availability"]["requesting_device"]["recommended_action"], "open_local")
+        self.assertEqual(
+            [(source["device_id"], source["device_name"], source["ref_type"]) for source in asset["sources"]],
+            [("android-1", "Phone", "source_original"), ("windows-local", "Windows", "library_copy")],
+        )
+
+    def test_library_center_can_filter_by_query_and_kind(self) -> None:
+        self.library.import_path(self.write_file("notes/red.txt", b"red car"), device_id="windows-local")
+        self.library.import_path(self.write_file("photos/blue.jpg", b"blue image"), device_id="windows-local")
+
+        listing = self.library.list_assets(self.resolver, query="blue", kind="image")
+
+        self.assertEqual(listing["total_count"], 1)
+        self.assertEqual(listing["assets"][0]["title"], "blue.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()

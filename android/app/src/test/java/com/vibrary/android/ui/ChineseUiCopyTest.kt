@@ -9,7 +9,7 @@ class ChineseUiCopyTest {
     fun `compose app defaults to Chinese user-facing copy`() {
         val source = projectFile("app/src/main/java/com/vibrary/android/ui/VibraryApp.kt").readText()
 
-        listOf("配对", "资料", "队列", "搜索", "缓存", "连接电脑", "验证码", "选择文件", "选择文件夹").forEach {
+        listOf("配对", "资料中心", "资料", "队列", "搜索", "缓存", "连接电脑", "验证码", "选择文件", "选择文件夹").forEach {
             assertContains(source, it)
         }
     }

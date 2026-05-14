@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                 state = uiState.value,
                 actions = VibraryActions(
                     onPair = ::pairServer,
+                    onRefreshLibrary = { refreshLibrary() },
                     onPickFiles = { filesLauncher.launch(picker.openDocumentIntent()) },
                     onPickFolder = { folderLauncher.launch(picker.openTreeIntent()) },
                     onSearch = ::search,
@@ -96,7 +97,11 @@ class MainActivity : ComponentActivity() {
                 uiState.value = uiState.value.copy(
                     pairedServer = server?.baseUrl,
                     pairedServerName = server?.displayName,
+                    serverBearerToken = server?.pairingToken,
                 )
+                if (server != null) {
+                    refreshLibrary(server)
+                }
             }
         }
     }
@@ -203,35 +208,57 @@ class MainActivity : ComponentActivity() {
                 val api = ApiClientFactory.create(normalizedServerUrl)
                 val announcement = discoveredServers.values.firstOrNull { it.serverUrl == normalizedServerUrl }
                 val displayName = announcement?.deviceName ?: "Windows Vibrary"
+                val currentDeviceId = deviceId()
                 val response = api.claimPairing(
                     PairingClaimRequest(
-                        deviceId = deviceId(),
+                        deviceId = currentDeviceId,
                         deviceName = android.os.Build.MODEL ?: "Android",
                         pairingToken = pairingToken,
                     ),
                 )
                 val database = (application as VibraryApplication).database
                 database.pairedServerDao().deactivateAll()
-                database.pairedServerDao().upsert(
-                    PairedServerEntity(
-                        pairedServerId = UUID.randomUUID().toString(),
-                        serverInstanceId = announcement?.instanceId,
-                        baseUrl = normalizedServerUrl,
-                        deviceId = deviceId(),
-                        pairingToken = response.deviceToken,
-                        displayName = displayName,
-                        isActive = true,
-                        createdAt = Instant.now().toString(),
-                        lastSeenAt = Instant.now().toString(),
-                    ),
+                val pairedServer = PairedServerEntity(
+                    pairedServerId = UUID.randomUUID().toString(),
+                    serverInstanceId = announcement?.instanceId,
+                    baseUrl = normalizedServerUrl,
+                    deviceId = currentDeviceId,
+                    pairingToken = response.deviceToken,
+                    displayName = displayName,
+                    isActive = true,
+                    createdAt = Instant.now().toString(),
+                    lastSeenAt = Instant.now().toString(),
                 )
+                database.pairedServerDao().upsert(pairedServer)
                 uiState.value = uiState.value.copy(
                     pairedServer = normalizedServerUrl,
                     pairedServerName = displayName,
+                    serverBearerToken = response.deviceToken,
                     status = "已连接 $displayName，之后会自动复用此连接",
                 )
+                refreshLibrary(pairedServer)
             }.getOrElse { error ->
                 uiState.value = uiState.value.copy(status = "配对失败：${error.userMessage()}")
+            }
+        }
+    }
+
+    private fun refreshLibrary(server: PairedServerEntity? = null) {
+        lifecycleScope.launch {
+            runCatching {
+                val active = server ?: activeServerOrError()
+                val api = ApiClientFactory.create(active.baseUrl, active.pairingToken)
+                val response = api.libraryAssets(deviceId = active.deviceId)
+                uiState.value = uiState.value.copy(
+                    libraryAssets = response.assets,
+                    libraryTotalCount = response.totalCount,
+                    pairedServer = active.baseUrl,
+                    pairedServerName = active.displayName,
+                    serverBearerToken = active.pairingToken,
+                    status = "资料中心已刷新：${response.totalCount} 项",
+                )
+            }.getOrElse { error ->
+                uiState.value = uiState.value.copy(status = "资料中心刷新失败：${error.userMessage()}")
             }
         }
     }
@@ -248,6 +275,9 @@ class MainActivity : ComponentActivity() {
                 uiState.value = uiState.value.copy(
                     pairedServer = null,
                     pairedServerName = null,
+                    serverBearerToken = null,
+                    libraryAssets = emptyList(),
+                    libraryTotalCount = 0,
                     status = "已移除此电脑，需要重新输入验证码才能加入",
                 )
             }.getOrElse { error ->

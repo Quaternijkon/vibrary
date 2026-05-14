@@ -40,6 +40,23 @@ describe("BackendClient", () => {
     });
   });
 
+  it("loads the shared library center for the Windows device", async () => {
+    const fetcher = vi.fn(async () =>
+      response({
+        total_count: 1,
+        assets: [{ asset_id: "asset_1", title: "photo.jpg", kind: "image", thumbnail_url: "/v1/assets/asset_1/thumbnail" }]
+      })
+    );
+    const client = new BackendClient("http://127.0.0.1:8765", fetcher);
+
+    const result = await client.libraryAssets();
+
+    expect(result.assets[0].thumbnail_url).toBe("/v1/assets/asset_1/thumbnail");
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:8765/v1/library/assets?device_id=windows-local&limit=100", {
+      method: "GET"
+    });
+  });
+
   it("binds the browser fetch function when no test fetcher is injected", async () => {
     const browserFetch = vi.fn(function (this: unknown) {
       if (this !== globalThis) {

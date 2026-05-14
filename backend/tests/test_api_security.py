@@ -192,6 +192,37 @@ class ApiSecurityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_trusted_remote_device_can_view_library_center_but_not_spoof_device_id(self) -> None:
+        source = Path(self.temp.name) / "photo.jpg"
+        source.write_bytes(b"image")
+        import_response = self.local_client.post("/v1/imports/windows/files", json={"paths": [str(source)], "device_id": "windows-local"})
+        asset_id = import_response.json()["assets"][0]["asset_id"]
+        qr = self.local_client.get("/v1/pairing/qr").json()
+        claim = self.remote_client.post(
+            "/v1/pairing/claim",
+            json={"device_id": "android-1", "device_name": "Phone", "pairing_token": qr["pairing_token"]},
+        )
+        token = claim.json()["device_token"]
+
+        allowed = self.remote_client.get(
+            "/v1/library/assets?device_id=android-1",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        spoofed = self.remote_client.get(
+            "/v1/library/assets?device_id=android-2",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        thumbnail = self.remote_client.get(
+            f"/v1/assets/{asset_id}/thumbnail",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()["assets"][0]["asset_id"], asset_id)
+        self.assertEqual(spoofed.status_code, 403)
+        self.assertEqual(thumbnail.status_code, 200)
+        self.assertEqual(thumbnail.content, b"image")
+
 
 if __name__ == "__main__":
     unittest.main()

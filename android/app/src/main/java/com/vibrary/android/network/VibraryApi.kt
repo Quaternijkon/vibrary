@@ -38,6 +38,12 @@ interface VibraryApi {
     @POST("/v1/search")
     suspend fun search(@Body request: SearchRequest): SearchResponse
 
+    @GET("/v1/library/assets")
+    suspend fun libraryAssets(
+        @Query("device_id") deviceId: String,
+        @Query("limit") limit: Int = 100,
+    ): LibraryAssetsResponse
+
     @POST("/v1/assets/{asset_id}/resolve")
     suspend fun resolveAsset(
         @Path("asset_id") assetId: String,
@@ -154,6 +160,42 @@ data class SearchFilters(
 @Serializable
 data class SearchResponse(
     val results: List<SearchResultDto>,
+)
+
+@Serializable
+data class LibraryAssetsResponse(
+    @SerialName("total_count") val totalCount: Int,
+    val limit: Int,
+    val offset: Int,
+    val assets: List<LibraryAssetDto>,
+)
+
+@Serializable
+data class LibraryAssetDto(
+    @SerialName("asset_id") val assetId: String,
+    @SerialName("asset_version_id") val assetVersionId: String? = null,
+    val title: String,
+    val kind: String,
+    @SerialName("mime_type") val mimeType: String? = null,
+    @SerialName("size_bytes") val sizeBytes: Long,
+    @SerialName("content_sha256") val contentSha256: String,
+    @SerialName("index_status") val indexStatus: String,
+    @SerialName("library_status") val libraryStatus: String,
+    @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerialName("content_url") val contentUrl: String? = null,
+    val sources: List<LibraryAssetSourceDto> = emptyList(),
+    val availability: AvailabilityDto? = null,
+    val delivery: DeliveryDto? = null,
+)
+
+@Serializable
+data class LibraryAssetSourceDto(
+    @SerialName("ref_id") val refId: String? = null,
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("device_name") val deviceName: String,
+    @SerialName("device_type") val deviceType: String,
+    @SerialName("ref_type") val refType: String,
+    @SerialName("display_name") val displayName: String? = null,
 )
 
 @Serializable

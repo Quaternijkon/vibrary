@@ -9,6 +9,7 @@ describe("loadBackendDashboardData", () => {
       indexingQueue: vi.fn(async () => []),
       cacheSummary: vi.fn(async () => ({})),
       devices: vi.fn(async () => []),
+      libraryAssets: vi.fn(async () => ({ total_count: 1, assets: [{ asset_id: "asset_1", title: "note.txt", kind: "text" }] })),
       pairingPayload: vi.fn(async () => ({
         server_url: "http://192.168.1.142:8765",
         pairing_code: "123456",
@@ -21,5 +22,7 @@ describe("loadBackendDashboardData", () => {
 
     expect(client.pairingPayload).toHaveBeenCalledTimes(1);
     expect(data.pairingPayload?.pairing_code).toBe("123456");
+    expect(client.libraryAssets).toHaveBeenCalledTimes(1);
+    expect(data.libraryAssets.assets[0].title).toBe("note.txt");
   });
 });

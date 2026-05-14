@@ -1,16 +1,14 @@
 export const desktopCopy = {
   brand: {
-    subtitle: "Windows 节点"
+    subtitle: "本地资料组"
   },
-  sections: [
-    { id: "status", label: "服务状态" },
-    { id: "library", label: "资料导入" },
-    { id: "uploads", label: "上传队列" },
-    { id: "index", label: "索引队列" },
+  pages: [
+    { id: "home", label: "首页" },
+    { id: "library", label: "资料中心" },
+    { id: "import", label: "导入" },
     { id: "search", label: "搜索" },
+    { id: "transfer", label: "传输" },
     { id: "devices", label: "设备" },
-    { id: "cache", label: "缓存" },
-    { id: "models", label: "模型" },
     { id: "settings", label: "设置" }
   ],
   actions: {
@@ -19,13 +17,37 @@ export const desktopCopy = {
     stop: "停止服务",
     chooseFiles: "选择文件",
     chooseFolder: "选择文件夹",
+    open: "打开",
+    viewAll: "查看全部",
     process: "处理索引",
     search: "搜索",
-    clearDownloads: "清理下载缓存"
+    clearDownloads: "清理下载缓存",
+    refreshLibrary: "刷新资料中心",
+    allTypes: "全部类型",
+    imagesOnly: "只看图片",
+    textOnly: "只看文档"
   },
   topbar: {
-    title: "本地资料库控制台",
+    title: "Vibrary 资料中心",
     loading: "正在读取服务状态"
+  },
+  pageTitles: {
+    home: "首页",
+    library: "资料中心",
+    import: "导入资料",
+    search: "搜索资料",
+    transfer: "传输与索引",
+    devices: "设备连接",
+    settings: "设置"
+  },
+  pageDescriptions: {
+    home: "查看本机服务、资料总量、索引和局域网状态。",
+    library: "统一管理从电脑和手机加入资料组的文件。",
+    import: "从 Windows 选择文件或文件夹，复制到资料库并进入索引队列。",
+    search: "在已经完成索引的资料中检索，并按设备副本状态打开或下载。",
+    transfer: "查看手机上传、Windows 导入和后端索引处理进度。",
+    devices: "用验证码加入手机，加入后默认成为资料组可信设备。",
+    settings: "调整局域网、发现广播、自动索引和缓存策略。"
   },
   status: {
     running: "运行中",
@@ -35,6 +57,23 @@ export const desktopCopy = {
     lanApi: "局域网 API",
     qdrantDetail: "仅监听 127.0.0.1",
     lanDetail: "开启后供已配对手机访问"
+  },
+  overview: {
+    libraryAssets: "资料总数",
+    images: "图片",
+    indexed: "已索引",
+    trustedDevices: "可信设备",
+    uploads: "上传任务",
+    indexJobs: "索引任务"
+  },
+  libraryCenter: {
+    title: "资料中心",
+    searchPlaceholder: "按文件名或类型筛选资料",
+    empty: "资料中心还没有文件。请先从电脑导入，或用手机上传。",
+    source: "来源",
+    indexStatus: "索引",
+    libraryCopy: "资料库正本",
+    noThumbnail: "文件"
   },
   library: {
     title: "资料导入",

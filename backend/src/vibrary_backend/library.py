@@ -4,11 +4,15 @@ import mimetypes
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .config import DEFAULT_EMBEDDING_PROFILE, AppPaths
 from .database import Database, new_id
 from .hashing import sha256_file
 from .timeutil import utc_now
+
+if TYPE_CHECKING:
+    from .resolver import ReplicaResolver
 
 
 TEXT_EXTENSIONS = {".txt", ".md", ".json", ".csv", ".log", ".html", ".xml"}
@@ -38,6 +42,68 @@ class LibraryService:
     def __init__(self, db: Database, paths: AppPaths):
         self.db = db
         self.paths = paths
+
+    def list_assets(
+        self,
+        resolver: "ReplicaResolver",
+        *,
+        device_id: str | None = None,
+        query: str | None = None,
+        kind: str = "all",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        where_sql, params = self._asset_filters(query=query, kind=kind)
+        total_count = int(self.db.scalar(f"SELECT COUNT(*) FROM assets a {where_sql}", params) or 0)
+        rows = self.db.query(
+            f"""
+            SELECT
+              a.*,
+              lf.relative_path,
+              lf.exists_flag,
+              ij.status AS latest_index_status,
+              ij.job_type AS latest_index_job_type,
+              ij.error_message AS latest_index_error,
+              ij.completed_at AS latest_index_completed_at
+            FROM assets a
+            LEFT JOIN library_files lf ON lf.asset_id = a.asset_id AND lf.exists_flag = 1
+            LEFT JOIN index_jobs ij ON ij.index_job_id = (
+              SELECT index_job_id
+              FROM index_jobs
+              WHERE asset_id = a.asset_id
+              ORDER BY created_at DESC
+              LIMIT 1
+            )
+            {where_sql}
+            ORDER BY a.first_seen_at DESC, a.original_name COLLATE NOCASE ASC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        )
+        assets = [self._library_asset_payload(row, resolver, device_id) for row in rows]
+        return {"total_count": total_count, "limit": limit, "offset": offset, "assets": assets}
+
+    def thumbnail_target(self, asset_id: str) -> tuple[Path, str] | None:
+        row = self.db.one(
+            """
+            SELECT a.mime_type, a.normalized_ext, lf.relative_path
+            FROM assets a
+            JOIN library_files lf ON lf.asset_id = a.asset_id AND lf.exists_flag = 1
+            WHERE a.asset_id = ?
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        if row is None:
+            return None
+        mime_type = str(row["mime_type"] or "application/octet-stream")
+        ext = f".{row['normalized_ext']}" if row["normalized_ext"] else ""
+        if _asset_kind(mime_type, ext) != "image":
+            return None
+        path = self.paths.resolve_data_path(str(row["relative_path"]))
+        if not path.exists():
+            return None
+        return path, mime_type
 
     def import_path(self, path: Path, device_id: str, original_name: str | None = None) -> ImportResult:
         source = Path(path)
@@ -218,3 +284,102 @@ class LibraryService:
             (asset_id, version_id),
         )
         return bool(search_count and point_count)
+
+    def _asset_filters(self, *, query: str | None, kind: str) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        normalized_query = (query or "").strip()
+        if normalized_query:
+            clauses.append("(a.original_name LIKE ? OR a.mime_type LIKE ?)")
+            like = f"%{normalized_query}%"
+            params.extend([like, like])
+        if kind == "image":
+            image_exts = [ext.lstrip(".") for ext in sorted(IMAGE_EXTENSIONS)]
+            placeholders = ", ".join("?" for _ in image_exts)
+            clauses.append(f"(a.mime_type LIKE 'image/%' OR a.normalized_ext IN ({placeholders}))")
+            params.extend(image_exts)
+        elif kind == "text":
+            image_exts = [ext.lstrip(".") for ext in sorted(IMAGE_EXTENSIONS)]
+            placeholders = ", ".join("?" for _ in image_exts)
+            clauses.append(f"(a.mime_type NOT LIKE 'image/%' AND (a.normalized_ext IS NULL OR a.normalized_ext NOT IN ({placeholders})))")
+            params.extend(image_exts)
+        if not clauses:
+            return "", params
+        return "WHERE " + " AND ".join(clauses), params
+
+    def _library_asset_payload(self, row, resolver: "ReplicaResolver", device_id: str | None) -> dict[str, Any]:
+        asset_id = str(row["asset_id"])
+        mime_type = str(row["mime_type"] or "application/octet-stream")
+        ext = f".{row['normalized_ext']}" if row["normalized_ext"] else ""
+        kind = _asset_kind(mime_type, ext)
+        has_library_copy = row["relative_path"] is not None and int(row["exists_flag"] or 0) == 1
+        availability = resolver.resolve(asset_id, device_id).__dict__ if device_id else None
+        latest_index_job = None
+        if row["latest_index_status"] is not None:
+            latest_index_job = {
+                "status": row["latest_index_status"],
+                "job_type": row["latest_index_job_type"],
+                "error_message": row["latest_index_error"],
+                "completed_at": row["latest_index_completed_at"],
+            }
+        return {
+            "asset_id": asset_id,
+            "asset_version_id": row["active_version_id"],
+            "title": row["original_name"],
+            "kind": kind,
+            "mime_type": mime_type,
+            "size_bytes": row["size_bytes"],
+            "content_sha256": row["content_sha256"],
+            "index_status": row["index_status"],
+            "library_status": row["library_status"],
+            "first_seen_at": row["first_seen_at"],
+            "first_seen_device_id": row["first_seen_device_id"],
+            "library_file_available": has_library_copy,
+            "thumbnail_url": f"/v1/assets/{asset_id}/thumbnail" if kind == "image" and has_library_copy else None,
+            "content_url": f"/v1/assets/{asset_id}/content" if has_library_copy else None,
+            "sources": self._asset_sources(asset_id),
+            "latest_index_job": latest_index_job,
+            "availability": availability["availability"] if availability else None,
+            "delivery": availability["delivery"] if availability else None,
+        }
+
+    def _asset_sources(self, asset_id: str) -> list[dict[str, Any]]:
+        rows = self.db.query(
+            """
+            SELECT r.*, d.device_name, d.device_type, d.last_seen_at
+            FROM device_asset_refs r
+            JOIN devices d ON d.device_id = r.device_id
+            WHERE r.asset_id = ? AND r.is_available = 1
+            ORDER BY
+              CASE r.ref_type
+                WHEN 'source_original' THEN 0
+                WHEN 'library_copy' THEN 1
+                WHEN 'cache_copy' THEN 2
+                ELSE 3
+              END,
+              d.device_name COLLATE NOCASE ASC
+            """,
+            (asset_id,),
+        )
+        return [
+            {
+                "ref_id": row["ref_id"],
+                "device_id": row["device_id"],
+                "device_name": row["device_name"],
+                "device_type": row["device_type"],
+                "ref_type": row["ref_type"],
+                "display_name": row["display_name"],
+                "size_bytes": row["size_bytes"],
+                "permission_status": row["permission_status"],
+                "last_verified_at": row["last_verified_at"],
+                "last_seen_at": row["last_seen_at"],
+            }
+            for row in rows
+        ]
+
+
+def _asset_kind(mime_type: str, ext: str) -> str:
+    lowered_mime = mime_type.lower()
+    if lowered_mime.startswith("image/") or ext.lower() in IMAGE_EXTENSIONS:
+        return "image"
+    return "text"

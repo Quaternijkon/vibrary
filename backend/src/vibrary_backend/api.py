@@ -140,7 +140,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.4")
+    app = FastAPI(title="Vibrary Backend", version="0.1.5")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,
@@ -327,12 +327,33 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
         return FileResponse(path)
 
     @app.get("/v1/assets/{asset_id}/thumbnail")
-    def asset_thumbnail(asset_id: str) -> dict[str, str]:
-        raise HTTPException(status_code=404, detail="thumbnail not generated")
+    def asset_thumbnail(asset_id: str) -> FileResponse:
+        target = services.library.thumbnail_target(asset_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="thumbnail not available")
+        path, mime_type = target
+        return FileResponse(path, media_type=mime_type)
 
     @app.get("/v1/assets/{asset_id}/preview")
     def asset_preview(asset_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="preview not generated")
+
+    @app.get("/v1/library/assets")
+    def library_assets(
+        device_id: str | None = None,
+        query: str | None = None,
+        kind: str = "all",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return services.library.list_assets(
+            services.resolver,
+            device_id=device_id,
+            query=query,
+            kind=kind,
+            limit=max(1, min(limit, 500)),
+            offset=max(0, offset),
+        )
 
     @app.post("/v1/devices/{device_id}/refs/sync")
     def refs_sync(device_id: str, request: RefSyncRequest) -> dict[str, int]:

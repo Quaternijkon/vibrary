@@ -44,6 +44,7 @@ export type SearchResult = {
   score: number;
   matched_by: string[];
   snippet?: string | null;
+  thumbnail_url?: string | null;
   delivery: {
     mode: string;
     download_url?: string | null;
@@ -59,6 +60,52 @@ export type SearchResult = {
 
 export type SearchResponse = {
   results: SearchResult[];
+};
+
+export type LibraryAssetSource = {
+  ref_id: string;
+  device_id: string;
+  device_name: string;
+  device_type: "windows" | "android";
+  ref_type: string;
+  display_name?: string | null;
+  size_bytes?: number | null;
+  permission_status?: string | null;
+  last_verified_at?: string | null;
+  last_seen_at?: string | null;
+};
+
+export type LibraryAsset = {
+  asset_id: string;
+  asset_version_id?: string | null;
+  title: string;
+  kind: "image" | "text";
+  mime_type?: string | null;
+  size_bytes: number;
+  content_sha256: string;
+  index_status: string;
+  library_status: string;
+  first_seen_at?: string | null;
+  first_seen_device_id?: string | null;
+  library_file_available: boolean;
+  thumbnail_url?: string | null;
+  content_url?: string | null;
+  sources: LibraryAssetSource[];
+  latest_index_job?: {
+    status?: string | null;
+    job_type?: string | null;
+    error_message?: string | null;
+    completed_at?: string | null;
+  } | null;
+  availability?: SearchResult["availability"] | null;
+  delivery?: SearchResult["delivery"] | null;
+};
+
+export type LibraryAssetsResponse = {
+  total_count: number;
+  limit: number;
+  offset: number;
+  assets: LibraryAsset[];
 };
 
 export class BackendClient {
@@ -113,6 +160,22 @@ export class BackendClient {
       limit: 20,
       filters: null
     });
+  }
+
+  libraryAssets(options: { query?: string; kind?: "all" | "image" | "text"; limit?: number; offset?: number } = {}): Promise<LibraryAssetsResponse> {
+    const params = new URLSearchParams();
+    params.set("device_id", "windows-local");
+    params.set("limit", String(options.limit ?? 100));
+    if (options.offset) params.set("offset", String(options.offset));
+    if (options.query?.trim()) params.set("query", options.query.trim());
+    if (options.kind && options.kind !== "all") params.set("kind", options.kind);
+    return this.get(`/v1/library/assets?${params.toString()}`);
+  }
+
+  assetUrl(path: string | null | undefined): string | null {
+    if (!path) return null;
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
   cacheSummary(): Promise<Record<string, number>> {

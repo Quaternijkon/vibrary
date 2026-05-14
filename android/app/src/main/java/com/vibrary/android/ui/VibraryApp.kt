@@ -1,8 +1,11 @@
 package com.vibrary.android.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storage
@@ -48,25 +53,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.vibrary.android.network.DiscoveryAnnouncement
+import com.vibrary.android.network.LibraryAssetDto
 import com.vibrary.android.network.SearchResultDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 data class VibraryUiState(
     val status: String = "就绪",
     val pairedServer: String? = null,
     val pairedServerName: String? = null,
+    val serverBearerToken: String? = null,
     val selectedCount: Int = 0,
     val queuedCount: Int = 0,
     val discoveredServers: List<DiscoveryAnnouncement> = emptyList(),
     val uploadRows: List<UploadQueueRow> = emptyList(),
     val cleanedCacheCount: Int = 0,
+    val libraryAssets: List<LibraryAssetDto> = emptyList(),
+    val libraryTotalCount: Int = 0,
     val searchResults: List<SearchResultDto> = emptyList(),
 )
 
 data class VibraryActions(
     val onPair: (serverUrl: String, pairingToken: String) -> Unit,
+    val onRefreshLibrary: () -> Unit,
     val onPickFiles: () -> Unit,
     val onPickFolder: () -> Unit,
     val onSearch: (query: String) -> Unit,
@@ -130,6 +147,7 @@ fun VibraryApp(
             ) {
                 when (selectedTab) {
                     AppTab.Pair -> PairingScreen(state, actions)
+                    AppTab.Library -> LibraryCenterScreen(state, actions)
                     AppTab.Select -> SourceSelectionScreen(state, actions)
                     AppTab.Queue -> UploadQueueScreen(state)
                     AppTab.Search -> SearchScreen(state, actions)
@@ -142,10 +160,46 @@ fun VibraryApp(
 
 private enum class AppTab(val label: String, val icon: ImageVector) {
     Pair("配对", Icons.Filled.Link),
+    Library("资料中心", Icons.Filled.Storage),
     Select("资料", Icons.Filled.Folder),
     Queue("队列", Icons.Filled.CloudUpload),
     Search("搜索", Icons.Filled.Search),
     Cache("缓存", Icons.Filled.Storage),
+}
+
+@Composable
+private fun LibraryCenterScreen(
+    state: VibraryUiState,
+    actions: VibraryActions,
+) {
+    ScreenColumn {
+        SectionTitle("资料中心")
+        Panel {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("资料组文件", style = MaterialTheme.typography.titleMedium)
+                    Text("共 ${state.libraryTotalCount} 项，可信设备默认可查看。", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = actions.onRefreshLibrary) {
+                    Text("刷新")
+                }
+            }
+        }
+        if (state.libraryAssets.isEmpty()) {
+            Panel {
+                Text("资料中心还没有文件。可在电脑端导入，或从手机选择文件上传。", style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            state.libraryAssets.forEach { asset ->
+                LibraryAssetCard(
+                    asset = asset,
+                    serverBaseUrl = state.pairedServer,
+                    bearerToken = state.serverBearerToken,
+                )
+            }
+        }
+        StatusText(state.status)
+    }
 }
 
 @Composable
@@ -406,6 +460,85 @@ private fun ResultCard(result: SearchResultDto, onOpen: () -> Unit) {
 }
 
 @Composable
+private fun LibraryAssetCard(
+    asset: LibraryAssetDto,
+    serverBaseUrl: String?,
+    bearerToken: String?,
+) {
+    Panel {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            RemoteThumbnail(
+                url = absoluteBackendUrl(serverBaseUrl, asset.thumbnailUrl),
+                bearerToken = bearerToken,
+                modifier = Modifier.size(72.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(asset.title, style = MaterialTheme.typography.titleMedium)
+                Text("${kindLabel(asset.kind)} / ${formatBytes(asset.sizeBytes)} / ${stateLabel(asset.indexStatus)}", style = MaterialTheme.typography.bodySmall)
+                Text("来源：${asset.sources.joinToString("、") { it.deviceName }.ifBlank { "未知" }}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteThumbnail(
+    url: String?,
+    bearerToken: String?,
+    modifier: Modifier = Modifier,
+) {
+    var image by remember(url, bearerToken) { mutableStateOf<ImageBitmap?>(null) }
+    val httpClient = remember { OkHttpClient() }
+    LaunchedEffect(url, bearerToken) {
+        image = null
+        if (url != null && bearerToken != null) {
+            image = withContext(Dispatchers.IO) {
+                runCatching {
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("Authorization", "Bearer $bearerToken")
+                        .build()
+                    httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            null
+                        } else {
+                            response.body?.byteStream()?.use { stream ->
+                                BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                            }
+                        }
+                    }
+                }.getOrNull()
+            }
+        }
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Box {
+            if (image != null) {
+                Image(
+                    bitmap = image!!,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    Icons.Filled.Image,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .fillMaxSize(),
+                    tint = MaterialTheme.colorScheme.secondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun MetricRow(label: String, value: String) {
     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
         Text(label)
@@ -439,4 +572,30 @@ private fun actionLabel(action: String): String = when (action) {
     "stream_or_download" -> "预览或下载"
     "unavailable" -> "不可用"
     else -> action
+}
+
+private fun absoluteBackendUrl(serverBaseUrl: String?, relativeUrl: String?): String? {
+    if (relativeUrl == null || serverBaseUrl == null) return null
+    if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl
+    return serverBaseUrl.trimEnd('/') + "/" + relativeUrl.trimStart('/')
+}
+
+private fun kindLabel(kind: String): String = when (kind) {
+    "image" -> "图片"
+    "text" -> "文档"
+    else -> kind
+}
+
+private fun stateLabel(status: String): String = when (status) {
+    "queued" -> "等待索引"
+    "indexing" -> "索引中"
+    "indexed" -> "已索引"
+    "failed" -> "索引失败"
+    else -> status
+}
+
+private fun formatBytes(value: Long): String = when {
+    value < 1024 -> "$value B"
+    value < 1024 * 1024 -> "${value / 1024} KB"
+    else -> "${value / 1024 / 1024} MB"
 }
