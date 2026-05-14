@@ -140,7 +140,7 @@ export class BackendClient {
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, init);
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}${path}`, init);
     if (!response.ok) {
       throw new Error(`Backend request failed: HTTP ${response.status}`);
     }

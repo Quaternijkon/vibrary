@@ -22,4 +22,22 @@ interface PairedServerDao {
 
     @Query("UPDATE paired_servers SET is_active = 0")
     suspend fun deactivateAll()
+
+    @Query(
+        """
+        UPDATE paired_servers
+        SET base_url = :baseUrl,
+            display_name = :displayName,
+            server_instance_id = :serverInstanceId,
+            last_seen_at = :lastSeenAt
+        WHERE paired_server_id = :pairedServerId
+        """,
+    )
+    suspend fun refreshDiscoveredEndpoint(
+        pairedServerId: String,
+        baseUrl: String,
+        displayName: String,
+        serverInstanceId: String,
+        lastSeenAt: String,
+    )
 }

@@ -1,0 +1,534 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "68d2a44279b4bc2a95b028a3b83cb65f",
+    "entities": [
+      {
+        "tableName": "local_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`local_source_id` TEXT NOT NULL, `source_type` TEXT NOT NULL, `uri_alias` TEXT NOT NULL, `persisted_uri` TEXT NOT NULL, `display_name` TEXT NOT NULL, `mime_type` TEXT, `size_bytes` INTEGER, `last_modified_at` TEXT, `permission_status` TEXT NOT NULL, `created_at` TEXT NOT NULL, `last_verified_at` TEXT, PRIMARY KEY(`local_source_id`))",
+        "fields": [
+          {
+            "fieldPath": "localSourceId",
+            "columnName": "local_source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uriAlias",
+            "columnName": "uri_alias",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "persistedUri",
+            "columnName": "persisted_uri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastModifiedAt",
+            "columnName": "last_modified_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "permissionStatus",
+            "columnName": "permission_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastVerifiedAt",
+            "columnName": "last_verified_at",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "local_source_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "upload_queue",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`queue_id` TEXT NOT NULL, `local_source_id` TEXT NOT NULL, `paired_server_id` TEXT, `server_upload_id` TEXT, `file_name` TEXT NOT NULL, `mime_type` TEXT, `size_bytes` INTEGER NOT NULL, `quick_fingerprint` TEXT, `content_sha256` TEXT, `state` TEXT NOT NULL, `bytes_uploaded` INTEGER NOT NULL, `chunk_size` INTEGER, `retry_count` INTEGER NOT NULL, `next_attempt_at` TEXT, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, `completed_at` TEXT, `error_message` TEXT, PRIMARY KEY(`queue_id`))",
+        "fields": [
+          {
+            "fieldPath": "queueId",
+            "columnName": "queue_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localSourceId",
+            "columnName": "local_source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pairedServerId",
+            "columnName": "paired_server_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serverUploadId",
+            "columnName": "server_upload_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "file_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quickFingerprint",
+            "columnName": "quick_fingerprint",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "contentSha256",
+            "columnName": "content_sha256",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bytesUploaded",
+            "columnName": "bytes_uploaded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkSize",
+            "columnName": "chunk_size",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "next_attempt_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "error_message",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "queue_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_upload_queue_local_source_id",
+            "unique": false,
+            "columnNames": [
+              "local_source_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upload_queue_local_source_id` ON `${TABLE_NAME}` (`local_source_id`)"
+          },
+          {
+            "name": "index_upload_queue_paired_server_id",
+            "unique": false,
+            "columnNames": [
+              "paired_server_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upload_queue_paired_server_id` ON `${TABLE_NAME}` (`paired_server_id`)"
+          },
+          {
+            "name": "index_upload_queue_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upload_queue_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_asset_refs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ref_id` TEXT NOT NULL, `asset_id` TEXT NOT NULL, `asset_version_id` TEXT, `ref_type` TEXT NOT NULL, `local_ref_id` TEXT, `local_source_id` TEXT, `cache_entry_id` TEXT, `display_name` TEXT, `size_bytes` INTEGER, `last_known_mtime` TEXT, `content_sha256` TEXT, `permission_status` TEXT NOT NULL, `created_at` TEXT NOT NULL, `last_verified_at` TEXT, `is_available` INTEGER NOT NULL, PRIMARY KEY(`ref_id`))",
+        "fields": [
+          {
+            "fieldPath": "refId",
+            "columnName": "ref_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetId",
+            "columnName": "asset_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetVersionId",
+            "columnName": "asset_version_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "refType",
+            "columnName": "ref_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localRefId",
+            "columnName": "local_ref_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "localSourceId",
+            "columnName": "local_source_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "cacheEntryId",
+            "columnName": "cache_entry_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastKnownMtime",
+            "columnName": "last_known_mtime",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "contentSha256",
+            "columnName": "content_sha256",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "permissionStatus",
+            "columnName": "permission_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastVerifiedAt",
+            "columnName": "last_verified_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isAvailable",
+            "columnName": "is_available",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ref_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_asset_refs_asset_id",
+            "unique": false,
+            "columnNames": [
+              "asset_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_asset_refs_asset_id` ON `${TABLE_NAME}` (`asset_id`)"
+          },
+          {
+            "name": "index_local_asset_refs_local_ref_id",
+            "unique": false,
+            "columnNames": [
+              "local_ref_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_asset_refs_local_ref_id` ON `${TABLE_NAME}` (`local_ref_id`)"
+          },
+          {
+            "name": "index_local_asset_refs_local_source_id",
+            "unique": false,
+            "columnNames": [
+              "local_source_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_asset_refs_local_source_id` ON `${TABLE_NAME}` (`local_source_id`)"
+          },
+          {
+            "name": "index_local_asset_refs_cache_entry_id",
+            "unique": false,
+            "columnNames": [
+              "cache_entry_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_asset_refs_cache_entry_id` ON `${TABLE_NAME}` (`cache_entry_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "cache_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cache_entry_id` TEXT NOT NULL, `asset_id` TEXT, `cache_type` TEXT NOT NULL, `relative_path` TEXT NOT NULL, `size_bytes` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `last_accessed_at` TEXT, `can_delete` INTEGER NOT NULL, PRIMARY KEY(`cache_entry_id`))",
+        "fields": [
+          {
+            "fieldPath": "cacheEntryId",
+            "columnName": "cache_entry_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetId",
+            "columnName": "asset_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "cacheType",
+            "columnName": "cache_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "relativePath",
+            "columnName": "relative_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAccessedAt",
+            "columnName": "last_accessed_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "canDelete",
+            "columnName": "can_delete",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cache_entry_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cache_entries_asset_id",
+            "unique": false,
+            "columnNames": [
+              "asset_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cache_entries_asset_id` ON `${TABLE_NAME}` (`asset_id`)"
+          },
+          {
+            "name": "index_cache_entries_cache_type",
+            "unique": false,
+            "columnNames": [
+              "cache_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cache_entries_cache_type` ON `${TABLE_NAME}` (`cache_type`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "paired_servers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`paired_server_id` TEXT NOT NULL, `server_instance_id` TEXT, `base_url` TEXT NOT NULL, `device_id` TEXT NOT NULL, `pairing_token` TEXT NOT NULL, `display_name` TEXT, `is_active` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `last_seen_at` TEXT, PRIMARY KEY(`paired_server_id`))",
+        "fields": [
+          {
+            "fieldPath": "pairedServerId",
+            "columnName": "paired_server_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverInstanceId",
+            "columnName": "server_instance_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "baseUrl",
+            "columnName": "base_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pairingToken",
+            "columnName": "pairing_token",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "is_active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "last_seen_at",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "paired_server_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '68d2a44279b4bc2a95b028a3b83cb65f')"
+    ]
+  }
+}

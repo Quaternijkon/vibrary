@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BackendClient } from "../backendClient";
 
 describe("BackendClient", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("imports selected files through the Windows import API", async () => {
     const fetcher = vi.fn(async () => response({ imported_count: 2 }));
     const client = new BackendClient("http://127.0.0.1:8765", fetcher);
@@ -34,6 +38,29 @@ describe("BackendClient", () => {
         filters: null
       })
     });
+  });
+
+  it("binds the browser fetch function when no test fetcher is injected", async () => {
+    const browserFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+      return Promise.resolve(
+        response({
+          server_url: "http://192.168.1.132:8765",
+          pairing_code: "123456",
+          pairing_token: "123456",
+          expires_at: "2026-05-14T07:39:16Z"
+        })
+      );
+    }) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", browserFetch);
+    const client = new BackendClient("http://127.0.0.1:8765");
+
+    const payload = await client.pairingPayload();
+
+    expect(payload.pairing_code).toBe("123456");
+    expect(browserFetch).toHaveBeenCalledWith("http://127.0.0.1:8765/v1/pairing/qr", { method: "GET" });
   });
 });
 

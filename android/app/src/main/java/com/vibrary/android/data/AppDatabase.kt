@@ -2,9 +2,11 @@ package com.vibrary.android.data
 
 import android.content.Context
 import androidx.room.Database
+import androidx.room.migration.Migration
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vibrary.android.data.dao.CacheEntryDao
 import com.vibrary.android.data.dao.LocalAssetRefDao
 import com.vibrary.android.data.dao.LocalSourceDao
@@ -24,7 +26,7 @@ import com.vibrary.android.data.entities.UploadQueueEntity
         CacheEntryEntity::class,
         PairedServerEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -36,7 +38,15 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pairedServerDao(): PairedServerDao
 
     companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE paired_servers ADD COLUMN server_instance_id TEXT")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "vibrary-local.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "vibrary-local.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

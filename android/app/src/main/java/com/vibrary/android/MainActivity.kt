@@ -13,6 +13,7 @@ import com.vibrary.android.network.ApiClientFactory
 import com.vibrary.android.network.DiscoveryAnnouncement
 import com.vibrary.android.network.LanDiscoveryClient
 import com.vibrary.android.network.PairingClaimRequest
+import com.vibrary.android.network.PairedServerDiscoveryPolicy
 import com.vibrary.android.network.ResolveRequest
 import com.vibrary.android.network.SearchFilters
 import com.vibrary.android.network.SearchRequest
@@ -117,7 +118,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             runCatching {
                 LanDiscoveryClient().listen { announcement ->
-                    withContext(Dispatchers.Main) {
+                    val announcements = withContext(Dispatchers.Main) {
                         discoveredServers[announcement.instanceId] = announcement
                         uiState.value = uiState.value.copy(
                             discoveredServers = discoveredServers.values.toList(),
@@ -127,11 +128,38 @@ class MainActivity : ComponentActivity() {
                                 uiState.value.status
                             },
                         )
+                        discoveredServers.values.toList()
                     }
+                    refreshPairedServerEndpoint(announcements)
                 }
             }.getOrElse { error ->
                 uiState.value = uiState.value.copy(status = "局域网发现启动失败：${error.userMessage()}")
             }
+        }
+    }
+
+    private suspend fun refreshPairedServerEndpoint(announcements: List<DiscoveryAnnouncement>) {
+        val database = (application as VibraryApplication).database
+        val activeServer = withContext(Dispatchers.IO) {
+            database.pairedServerDao().activeServer()
+        }
+        val active = activeServer ?: return
+        val replacement = PairedServerDiscoveryPolicy.replacementFor(active, announcements) ?: return
+        withContext(Dispatchers.IO) {
+            database.pairedServerDao().refreshDiscoveredEndpoint(
+                pairedServerId = active.pairedServerId,
+                baseUrl = replacement.serverUrl,
+                displayName = replacement.deviceName,
+                serverInstanceId = replacement.instanceId,
+                lastSeenAt = Instant.now().toString(),
+            )
+        }
+        withContext(Dispatchers.Main) {
+            uiState.value = uiState.value.copy(
+                pairedServer = replacement.serverUrl,
+                pairedServerName = replacement.deviceName,
+                status = "已更新 ${replacement.deviceName} 的局域网地址",
+            )
         }
     }
 
@@ -173,8 +201,8 @@ class MainActivity : ComponentActivity() {
             runCatching {
                 val normalizedServerUrl = com.vibrary.android.network.normalizeRetrofitBaseUrl(serverUrl).trimEnd('/')
                 val api = ApiClientFactory.create(normalizedServerUrl)
-                val displayName = discoveredServers.values.firstOrNull { it.serverUrl == normalizedServerUrl }?.deviceName
-                    ?: "Windows Vibrary"
+                val announcement = discoveredServers.values.firstOrNull { it.serverUrl == normalizedServerUrl }
+                val displayName = announcement?.deviceName ?: "Windows Vibrary"
                 val response = api.claimPairing(
                     PairingClaimRequest(
                         deviceId = deviceId(),
@@ -187,6 +215,7 @@ class MainActivity : ComponentActivity() {
                 database.pairedServerDao().upsert(
                     PairedServerEntity(
                         pairedServerId = UUID.randomUUID().toString(),
+                        serverInstanceId = announcement?.instanceId,
                         baseUrl = normalizedServerUrl,
                         deviceId = deviceId(),
                         pairingToken = response.deviceToken,

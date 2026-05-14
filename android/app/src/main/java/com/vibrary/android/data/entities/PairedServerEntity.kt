@@ -9,6 +9,8 @@ data class PairedServerEntity(
     @PrimaryKey
     @ColumnInfo(name = "paired_server_id")
     val pairedServerId: String,
+    @ColumnInfo(name = "server_instance_id")
+    val serverInstanceId: String?,
     @ColumnInfo(name = "base_url")
     val baseUrl: String,
     @ColumnInfo(name = "device_id")

@@ -1,6 +1,6 @@
 {
   "name": "vibrary-desktop",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "productName": "Vibrary",
   "description": "Windows desktop shell for the Vibrary local library server.",
