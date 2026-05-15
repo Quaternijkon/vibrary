@@ -10,7 +10,11 @@ PRODUCT_NAME = "Vibrary"
 SCHEMA_VERSION = "v1"
 TEXT_COLLECTION = "text_chunks_v1"
 IMAGE_COLLECTION = "image_semantic_v1"
-DEFAULT_EMBEDDING_PROFILE = "text-mini-multilingual-v1"
+IMAGE_LABEL_COLLECTION = "image_labels_v1"
+TEXT_EMBEDDING_PROFILE = "text-mini-multilingual-v1"
+IMAGE_EMBEDDING_PROFILE = "image-clip-vit-b32-v1"
+IMAGE_LABEL_EMBEDDING_PROFILE = "image-labels-multilingual-v1"
+DEFAULT_EMBEDDING_PROFILE = TEXT_EMBEDDING_PROFILE
 DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024
 
 

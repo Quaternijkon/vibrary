@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .config import DEFAULT_EMBEDDING_PROFILE, AppPaths
+from .config import DEFAULT_EMBEDDING_PROFILE, IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, AppPaths
 from .database import Database, new_id
 from .hashing import sha256_file
 from .timeutil import utc_now
@@ -275,15 +275,77 @@ class LibraryService:
         index_status = self.db.scalar("SELECT index_status FROM assets WHERE asset_id = ?", (asset_id,))
         if index_status != "indexed":
             return False
+        row = self.db.one("SELECT mime_type, normalized_ext FROM assets WHERE asset_id = ?", (asset_id,))
+        if row is None:
+            return False
+        mime_type = str(row["mime_type"] or "application/octet-stream")
+        ext = f".{row['normalized_ext']}" if row["normalized_ext"] else ""
         search_count = self.db.scalar(
             "SELECT COUNT(*) FROM search_documents WHERE asset_id = ? AND asset_version_id = ?",
             (asset_id, version_id),
         )
+        if not search_count:
+            return False
+        if _asset_kind(mime_type, ext) == "image":
+            image_count = self.db.scalar(
+                """
+                SELECT COUNT(*) FROM qdrant_points
+                WHERE asset_id = ? AND asset_version_id = ? AND collection_name = ?
+                """,
+                (asset_id, version_id, IMAGE_COLLECTION),
+            )
+            label_count = self.db.scalar(
+                """
+                SELECT COUNT(*) FROM qdrant_points
+                WHERE asset_id = ? AND asset_version_id = ? AND collection_name = ?
+                """,
+                (asset_id, version_id, IMAGE_LABEL_COLLECTION),
+            )
+            return bool(image_count and label_count)
         point_count = self.db.scalar(
             "SELECT COUNT(*) FROM qdrant_points WHERE asset_id = ? AND asset_version_id = ?",
             (asset_id, version_id),
         )
-        return bool(search_count and point_count)
+        return bool(point_count)
+
+    def queue_missing_image_label_indexes(self) -> int:
+        rows = self.db.query(
+            f"""
+            SELECT a.asset_id, a.active_version_id
+            FROM assets a
+            JOIN library_files lf ON lf.asset_id = a.asset_id AND lf.asset_version_id = a.active_version_id AND lf.exists_flag = 1
+            WHERE (a.mime_type LIKE 'image/%' OR a.normalized_ext IN ({", ".join("?" for _ in IMAGE_EXTENSIONS)}))
+              AND NOT EXISTS (
+                SELECT 1 FROM qdrant_points qp
+                WHERE qp.asset_id = a.asset_id
+                  AND qp.asset_version_id = a.active_version_id
+                  AND qp.collection_name = ?
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM index_jobs ij
+                WHERE ij.asset_id = a.asset_id
+                  AND ij.asset_version_id = a.active_version_id
+                  AND ij.status IN ('queued', 'indexing', 'retry_wait')
+              )
+            """,
+            [ext.lstrip(".") for ext in sorted(IMAGE_EXTENSIONS)] + [IMAGE_LABEL_COLLECTION],
+        )
+        queued = 0
+        now = utc_now()
+        for row in rows:
+            self.db.execute(
+                """
+                INSERT INTO index_jobs(
+                    index_job_id, asset_id, asset_version_id, job_type, status, priority,
+                    parser_version, embedding_profile_id, created_at
+                )
+                VALUES (?, ?, ?, 'image', 'queued', 90, 'parser_v2', ?, ?)
+                """,
+                (new_id("idx"), row["asset_id"], row["active_version_id"], DEFAULT_EMBEDDING_PROFILE, now),
+            )
+            self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (row["asset_id"],))
+            queued += 1
+        return queued
 
     def _asset_filters(self, *, query: str | None, kind: str) -> tuple[str, list[Any]]:
         clauses: list[str] = []

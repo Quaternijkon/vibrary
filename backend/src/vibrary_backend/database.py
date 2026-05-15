@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from .config import DEFAULT_EMBEDDING_PROFILE, SCHEMA_VERSION
+from .config import IMAGE_EMBEDDING_PROFILE, IMAGE_LABEL_EMBEDDING_PROFILE, SCHEMA_VERSION, TEXT_EMBEDDING_PROFILE
 from .timeutil import utc_now
 
 
@@ -37,7 +37,7 @@ class Database:
             """,
             (SCHEMA_VERSION, utc_now()),
         )
-        self.execute(
+        self.executemany(
             """
             INSERT OR IGNORE INTO embedding_profiles(
                 embedding_profile_id, model_name, model_revision, modality, dimension,
@@ -45,19 +45,47 @@ class Database:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                DEFAULT_EMBEDDING_PROFILE,
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                "mvp",
-                "text",
-                384,
-                "Cosine",
-                "fastembed",
-                "",
-                "model must be downloaded into the local models directory for production embedding",
-                1,
-                utc_now(),
-            ),
+            [
+                (
+                    TEXT_EMBEDDING_PROFILE,
+                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                    "mvp",
+                    "text",
+                    384,
+                    "Cosine",
+                    "fastembed",
+                    "",
+                    "model must be downloaded into the local models directory for production embedding",
+                    1,
+                    utc_now(),
+                ),
+                (
+                    IMAGE_EMBEDDING_PROFILE,
+                    "Qdrant/clip-ViT-B-32-vision",
+                    "mvp",
+                    "image",
+                    512,
+                    "Cosine",
+                    "fastembed",
+                    "",
+                    "CLIP image encoder used for Qdrant image-semantic vectors",
+                    0,
+                    utc_now(),
+                ),
+                (
+                    IMAGE_LABEL_EMBEDDING_PROFILE,
+                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                    "mvp",
+                    "image_label_text",
+                    384,
+                    "Cosine",
+                    "fastembed",
+                    "",
+                    "bilingual visual labels generated from FastEmbed CLIP concepts and stored in Qdrant",
+                    0,
+                    utc_now(),
+                ),
+            ],
         )
         self.connection.commit()
 

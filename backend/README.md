@@ -16,6 +16,10 @@ package.
 - Queue indexing jobs, embed text/image inputs with FastEmbed on the production
   Qdrant path, upsert versioned points through the vector-store adapter, and
   keep SQLite metadata for recovery and snippets.
+- For images, maintain two Qdrant collections: raw image vectors in
+  `image_semantic_v1` and bilingual visual-label text vectors in
+  `image_labels_v1`. This keeps Chinese visual searches such as `猴子` on the
+  Qdrant path instead of falling back to filename or SQLite scans.
 - Resolve search results through local source/cache/library replica rules before
   deciding whether a file should be downloaded or streamed.
 - Clear only app-owned cache files; source originals and library copies are not
@@ -45,6 +49,11 @@ The production adapter enforces parsed `127.0.0.1` Qdrant URLs, rejects
 userinfo host spoofing, uses the sidecar HTTP API for collection creation,
 point upsert, and vector search, and loads FastEmbed models from the configured
 models directory.
+
+`GET /v1/search/diagnostics` reports whether the active store is Qdrant,
+collection point counts, and the embedding profiles recorded in SQLite. It is
+intended for checking whether a search result came from the expected Qdrant
+collections.
 
 ## Sidecar Environment
 

@@ -17,6 +17,7 @@ from .cache import CacheService
 from .config import AppPaths, BackendSettings
 from .database import Database
 from .embedding import FastEmbedEmbeddingProvider
+from .image_semantics import FastEmbedImageSemanticAnalyzer, NoopImageSemanticAnalyzer
 from .indexing import IndexService
 from .library import LibraryService
 from .pairing import PairingService
@@ -102,13 +103,19 @@ class Services:
         self.db.initialize()
         self.db.upsert_device("windows-local", "Windows", "windows", is_trusted=True)
         self.vector_store = vector_store or self._create_vector_store()
+        image_semantic_analyzer = (
+            FastEmbedImageSemanticAnalyzer(self.paths.models_dir)
+            if self.settings.use_qdrant and vector_store is None
+            else NoopImageSemanticAnalyzer()
+        )
         self.library = LibraryService(self.db, self.paths)
         self.resolver = ReplicaResolver(self.db, self.paths)
-        self.indexer = IndexService(self.db, self.paths, self.vector_store)
+        self.indexer = IndexService(self.db, self.paths, self.vector_store, image_semantic_analyzer=image_semantic_analyzer)
         self.search = SearchService(self.db, self.paths, self.resolver, self.vector_store)
         self.uploads = UploadService(self.db, self.paths, self.library)
         self.cache = CacheService(self.db, self.paths)
         self.pairing = PairingService(self.db)
+        self.queued_image_label_backfill_count = self.library.queue_missing_image_label_indexes()
 
     def _create_vector_store(self) -> VectorStore:
         if not self.settings.use_qdrant:
@@ -140,7 +147,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.5")
+    app = FastAPI(title="Vibrary Backend", version="0.1.6")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,
@@ -201,6 +208,45 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             "qdrant": {"url": services.settings.qdrant_url, "exposed_to_lan": False},
             "public_url": services.settings.public_url,
             "auto_index": services.settings.auto_index,
+            "queued_image_label_backfill_count": services.queued_image_label_backfill_count,
+        }
+
+    @app.get("/v1/search/diagnostics")
+    def search_diagnostics() -> dict[str, Any]:
+        point_counts = {
+            str(row["collection_name"]): int(row["count"])
+            for row in services.db.query(
+                """
+                SELECT collection_name, COUNT(*) AS count
+                FROM qdrant_points
+                GROUP BY collection_name
+                ORDER BY collection_name
+                """
+            )
+        }
+        profiles = [
+            {
+                "embedding_profile_id": row["embedding_profile_id"],
+                "model_name": row["model_name"],
+                "modality": row["modality"],
+                "dimension": row["dimension"],
+                "distance": row["distance"],
+                "runtime": row["runtime"],
+            }
+            for row in services.db.query(
+                """
+                SELECT embedding_profile_id, model_name, modality, dimension, distance, runtime
+                FROM embedding_profiles
+                ORDER BY embedding_profile_id
+                """
+            )
+        ]
+        return {
+            "vector_store": services.vector_store.__class__.__name__,
+            "qdrant_enabled": services.settings.use_qdrant,
+            "qdrant_url": services.settings.qdrant_url,
+            "collections": point_counts,
+            "embedding_profiles": profiles,
         }
 
     @app.get("/v1/devices")

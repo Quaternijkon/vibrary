@@ -500,7 +500,7 @@ function SearchPage(props: {
               </div>
               <div>
                 <strong>{result.title}</strong>
-                <span>{labelFor(desktopCopy.deliveryLabels, result.delivery.mode)} / {labelFor(desktopCopy.actionLabels, result.availability.requesting_device.recommended_action)} / {result.score.toFixed(2)}</span>
+                <span>{labelFor(desktopCopy.deliveryLabels, result.delivery.mode)} / {labelFor(desktopCopy.actionLabels, result.availability.requesting_device.recommended_action)} / {result.score.toFixed(2)} / {result.matched_by.join(", ")}</span>
                 {result.snippet ? <p>{result.snippet}</p> : null}
               </div>
               {openUrl ? <a className="text-link" href={openUrl} target="_blank" rel="noreferrer">{desktopCopy.actions.open}</a> : null}

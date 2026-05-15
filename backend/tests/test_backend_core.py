@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vibrary_backend.cache import CacheService
-from vibrary_backend.config import AppPaths, IMAGE_COLLECTION
+from vibrary_backend.config import AppPaths, IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION
 from vibrary_backend.database import Database
 from vibrary_backend.indexing import IndexService
 from vibrary_backend.library import LibraryService
@@ -18,6 +18,14 @@ from vibrary_backend.resolver import ReplicaResolver
 from vibrary_backend.search import SearchService
 from vibrary_backend.uploads import UploadService
 from vibrary_backend.vector_store import InMemoryVectorStore
+
+
+class StaticImageSemanticAnalyzer:
+    def __init__(self, description: str):
+        self.description = description
+
+    def describe(self, path: Path, title: str, mime_type: str) -> str:
+        return self.description
 
 
 class BackendCoreTests(unittest.TestCase):
@@ -85,6 +93,25 @@ class BackendCoreTests(unittest.TestCase):
         self.assertEqual(self.db.scalar("SELECT status FROM index_jobs WHERE asset_id = ?", (asset_id,)), "queued")
         self.assertEqual(self.db.scalar("SELECT index_status FROM assets WHERE asset_id = ?", (asset_id,)), "queued")
 
+    def test_existing_indexed_image_missing_label_collection_is_backfilled(self) -> None:
+        source = self.write_file("legacy-image.jpg", b"legacy-jpeg-bytes")
+        imported = self.library.import_path(source, device_id="windows-local")
+        self.indexer.process_next(limit=5)
+        asset_id = imported.assets[0].asset_id
+        version_id = imported.assets[0].asset_version_id
+        self.db.execute("DELETE FROM qdrant_points WHERE asset_id = ? AND collection_name = ?", (asset_id, IMAGE_LABEL_COLLECTION))
+        self.db.execute("DELETE FROM search_documents WHERE asset_id = ? AND collection_name = ?", (asset_id, IMAGE_LABEL_COLLECTION))
+        self.db.execute("UPDATE assets SET index_status = 'indexed' WHERE asset_id = ?", (asset_id,))
+
+        queued = self.library.queue_missing_image_label_indexes()
+
+        self.assertEqual(queued, 1)
+        queued_job = self.db.one(
+            "SELECT * FROM index_jobs WHERE asset_id = ? AND asset_version_id = ? AND status = 'queued'",
+            (asset_id, version_id),
+        )
+        self.assertIsNotNone(queued_job)
+
     def test_image_import_queues_and_indexes_image_semantic_collection(self) -> None:
         source = self.write_file("photo.png", b"\x89PNG\r\n\x1a\nminimal-test-image")
         imported = self.library.import_path(source, device_id="windows-local")
@@ -97,6 +124,31 @@ class BackendCoreTests(unittest.TestCase):
         self.assertEqual(processed.indexed_count, 1)
         self.assertEqual(self.vector_store.upsert_calls[0].collection_name, IMAGE_COLLECTION)
         self.assertEqual(self.vector_store.upsert_calls[0].points[0].asset_id, imported.assets[0].asset_id)
+
+    def test_image_import_indexes_bilingual_visual_labels_for_chinese_semantic_search(self) -> None:
+        source = self.write_file("monkey.jpg", b"fake-jpeg-bytes")
+        imported = self.library.import_path(source, device_id="windows-local")
+        self.indexer.image_semantic_analyzer = StaticImageSemanticAnalyzer("猴子 monkey primate animal")
+
+        processed = self.indexer.process_next(limit=5)
+
+        self.assertEqual(processed.indexed_count, 1)
+        self.assertEqual([call.collection_name for call in self.vector_store.upsert_calls], [IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION])
+        label_point = self.vector_store.upsert_calls[1].points[0]
+        self.assertEqual(label_point.asset_id, imported.assets[0].asset_id)
+        self.assertIn("猴子 monkey", label_point.text)
+        self.assertEqual(self.db.scalar("SELECT COUNT(*) FROM search_documents WHERE asset_id = ?", (imported.assets[0].asset_id,)), 2)
+
+    def test_chinese_visual_query_matches_image_label_qdrant_collection(self) -> None:
+        source = self.write_file("wildlife.jpg", b"fake-jpeg-bytes")
+        imported = self.library.import_path(source, device_id="windows-local")
+        self.indexer.image_semantic_analyzer = StaticImageSemanticAnalyzer("猴子 monkey primate animal")
+        self.indexer.process_next(limit=5)
+
+        result = self.search.search(device_id="windows-local", query="猴子", search_types=["image"], limit=5)
+
+        self.assertEqual(result["results"][0]["asset_id"], imported.assets[0].asset_id)
+        self.assertEqual(result["results"][0]["matched_by"], ["image_labels"])
 
     def test_resumable_upload_complete_imports_asset_and_is_idempotent(self) -> None:
         content = b"chunk-one::chunk-two"

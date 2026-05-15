@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config import AppPaths
+from .config import IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, AppPaths
 from .database import Database
 from .resolver import ReplicaResolver
 from .vector_store import VectorStore, default_collections
@@ -45,7 +45,7 @@ class SearchService:
             if row is None:
                 continue
             resolved = self.resolver.resolve(asset_id, device_id)
-            matched_by = ["image_semantic"] if hit.collection_name.startswith("image") else ["text"]
+            matched_by = [_matched_by_collection(hit.collection_name)]
             results.append(
                 {
                     "asset_id": asset_id,
@@ -68,3 +68,11 @@ class SearchService:
         if not content:
             return None
         return content[:160]
+
+
+def _matched_by_collection(collection_name: str) -> str:
+    if collection_name == IMAGE_COLLECTION:
+        return "image_semantic"
+    if collection_name == IMAGE_LABEL_COLLECTION:
+        return "image_labels"
+    return "text"

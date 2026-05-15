@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
-from .config import IMAGE_COLLECTION, TEXT_COLLECTION
+from .config import IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, TEXT_COLLECTION
 from .embedding import EmbeddingProvider, FastEmbedEmbeddingProvider
 
 
@@ -237,6 +237,7 @@ def default_collections(search_types: list[str] | None = None) -> list[str]:
     if "text" in requested or "ocr" in requested:
         collections.append(TEXT_COLLECTION)
     if "image" in requested:
+        collections.append(IMAGE_LABEL_COLLECTION)
         collections.append(IMAGE_COLLECTION)
     return collections
 

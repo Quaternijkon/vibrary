@@ -8,13 +8,13 @@ from uuid import UUID
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from vibrary_backend.config import AppPaths, TEXT_COLLECTION
+from vibrary_backend.config import AppPaths, IMAGE_LABEL_COLLECTION, TEXT_COLLECTION
 from vibrary_backend.database import Database
 from vibrary_backend.indexing import IndexService
 from vibrary_backend.library import LibraryService
 from vibrary_backend.resolver import ReplicaResolver
 from vibrary_backend.search import SearchService
-from vibrary_backend.vector_store import InMemoryVectorStore, QdrantVectorStore, VectorPoint
+from vibrary_backend.vector_store import InMemoryVectorStore, QdrantVectorStore, VectorPoint, default_collections
 
 
 class StaticEmbeddingProvider:
@@ -181,6 +181,40 @@ class QdrantContractTests(unittest.TestCase):
         self.assertLess(
             calls.index(("PUT", f"/collections/{TEXT_COLLECTION}/index", {"field_name": "asset_id", "field_schema": "keyword"})),
             next(i for i, call in enumerate(calls) if call[1] == f"/collections/{TEXT_COLLECTION}/points?wait=true"),
+        )
+
+    def test_image_search_queries_label_collection_before_raw_image_collection(self) -> None:
+        self.assertEqual(default_collections(["image"])[0], IMAGE_LABEL_COLLECTION)
+
+    def test_qdrant_label_collection_uses_text_vector_dimension(self) -> None:
+        store = QdrantVectorStore("http://127.0.0.1:6333", "secret", embedding_provider=StaticEmbeddingProvider())
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+            calls.append((method, path, payload))
+            if path == f"/collections/{IMAGE_LABEL_COLLECTION}/exists":
+                return {"result": {"exists": False}}
+            return {"result": {}}
+
+        store._request = fake_request  # type: ignore[method-assign]
+
+        store.upsert(
+            IMAGE_LABEL_COLLECTION,
+            [
+                VectorPoint(
+                    point_id="point_1",
+                    asset_id="asset_1",
+                    asset_version_id="ver_1",
+                    collection_name=IMAGE_LABEL_COLLECTION,
+                    text="猴子 monkey",
+                    payload={"mime_type": "image/jpeg"},
+                )
+            ],
+        )
+
+        self.assertIn(
+            ("PUT", f"/collections/{IMAGE_LABEL_COLLECTION}", {"vectors": {"size": 3, "distance": "Cosine"}}),
+            calls,
         )
 
 

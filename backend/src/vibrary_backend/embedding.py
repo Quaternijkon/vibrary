@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from .config import IMAGE_COLLECTION, TEXT_COLLECTION
+from .config import IMAGE_COLLECTION
 
 
 TEXT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -44,8 +44,8 @@ class FastEmbedEmbeddingProvider:
 
     def embed_query(self, collection_name: str, query: str) -> list[float]:
         if collection_name == IMAGE_COLLECTION:
-            return self._embed_image_text(query)
-        return self._embed_text(f"query: {query}")
+            return self._embed_image_text(_expand_visual_query(query))
+        return self._embed_text(f"query: {_expand_visual_query(query)}")
 
     def _embed_text(self, text: str) -> list[float]:
         model = self._load_text_model()
@@ -94,3 +94,70 @@ def _as_float_list(vector) -> list[float]:
     else:
         values = list(vector)
     return [float(value) for value in values]
+
+
+_VISUAL_QUERY_ALIASES = {
+    "猴": "monkey ape macaque primate animal",
+    "猴子": "monkey ape macaque primate animal",
+    "猿": "ape monkey primate animal",
+    "猫": "cat kitten pet animal",
+    "狗": "dog puppy pet animal",
+    "鸟": "bird wildlife animal",
+    "鱼": "fish aquatic animal sea life",
+    "马": "horse animal",
+    "牛": "cow cattle farm animal",
+    "羊": "sheep goat farm animal",
+    "大象": "elephant animal wildlife",
+    "老虎": "tiger big cat wildlife",
+    "狮子": "lion big cat wildlife",
+    "熊猫": "panda animal wildlife",
+    "熊": "bear animal wildlife",
+    "人": "person people human portrait",
+    "人脸": "face portrait selfie",
+    "车": "car vehicle automobile",
+    "汽车": "car vehicle automobile",
+    "公交": "bus vehicle transport",
+    "火车": "train railway transport",
+    "飞机": "airplane aircraft transport",
+    "自行车": "bicycle bike cycling",
+    "摩托": "motorcycle bike vehicle",
+    "船": "boat ship watercraft",
+    "建筑": "building architecture house city",
+    "桥": "bridge architecture river",
+    "山": "mountain landscape nature",
+    "河": "river water landscape",
+    "海": "ocean sea beach water",
+    "森林": "forest trees nature",
+    "花": "flower plant blossom",
+    "树": "tree plant forest",
+    "食物": "food meal dish",
+    "水果": "fruit apple banana orange",
+    "咖啡": "coffee drink cup",
+    "书": "book document paper",
+    "文档": "document paper page text",
+    "截图": "screenshot screen capture interface app",
+    "图表": "chart graph plot diagram",
+    "表格": "table spreadsheet grid",
+    "票据": "receipt invoice bill paper",
+    "标志": "logo brand icon",
+    "地图": "map navigation location",
+    "手机": "phone smartphone device",
+    "电脑": "computer laptop desktop device",
+    "键盘": "keyboard computer device",
+    "服装": "clothing shirt dress fashion",
+    "鞋": "shoes sneakers footwear",
+    "运动": "sports ball exercise game",
+    "音乐": "music instrument concert",
+    "医疗": "medical hospital medicine health",
+    "钱": "money cash banknote currency",
+}
+
+
+def _expand_visual_query(query: str) -> str:
+    normalized = query.strip()
+    if not normalized:
+        return query
+    aliases = [alias for key, alias in _VISUAL_QUERY_ALIASES.items() if key in normalized]
+    if not aliases:
+        return normalized
+    return " ".join([normalized, *aliases])

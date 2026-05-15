@@ -5,8 +5,18 @@ import re
 import uuid
 from dataclasses import dataclass
 
-from .config import DEFAULT_EMBEDDING_PROFILE, IMAGE_COLLECTION, TEXT_COLLECTION, AppPaths
+from .config import (
+    DEFAULT_EMBEDDING_PROFILE,
+    IMAGE_COLLECTION,
+    IMAGE_EMBEDDING_PROFILE,
+    IMAGE_LABEL_COLLECTION,
+    IMAGE_LABEL_EMBEDDING_PROFILE,
+    TEXT_COLLECTION,
+    TEXT_EMBEDDING_PROFILE,
+    AppPaths,
+)
 from .database import Database
+from .image_semantics import ImageSemanticAnalyzer, NoopImageSemanticAnalyzer
 from .timeutil import utc_now
 from .vector_store import VectorPoint, VectorStore
 
@@ -21,10 +31,17 @@ class IndexProcessResult:
 
 
 class IndexService:
-    def __init__(self, db: Database, paths: AppPaths, vector_store: VectorStore):
+    def __init__(
+        self,
+        db: Database,
+        paths: AppPaths,
+        vector_store: VectorStore,
+        image_semantic_analyzer: ImageSemanticAnalyzer | None = None,
+    ):
         self.db = db
         self.paths = paths
         self.vector_store = vector_store
+        self.image_semantic_analyzer = image_semantic_analyzer or NoopImageSemanticAnalyzer()
 
     def process_next(self, limit: int = 10) -> IndexProcessResult:
         rows = self.db.query(
@@ -51,75 +68,40 @@ class IndexService:
                 path = self.paths.resolve_data_path(str(row["relative_path"]))
                 if not path.exists():
                     raise FileNotFoundError(path)
-                content = self._extract_content(path, str(row["job_type"]), str(row["original_name"]), str(row["mime_type"]))
-                collection = IMAGE_COLLECTION if str(row["job_type"]) == "image" else TEXT_COLLECTION
-                payload_hash = hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest()
-                point_id = str(uuid.uuid4())
+                job_type = str(row["job_type"])
+                title = str(row["original_name"])
+                mime_type = str(row["mime_type"])
+                label_content = self._extract_image_label_content(path, job_type, title, mime_type)
+                content = self._extract_content(path, job_type, title, mime_type, label_content=label_content)
                 now = utc_now()
-                payload = {
-                    "asset_id": row["asset_id"],
-                    "asset_version_id": row["asset_version_id"],
-                    "title": row["original_name"],
-                    "mime_type": row["mime_type"],
-                    "job_type": row["job_type"],
-                    "embedding_profile_id": DEFAULT_EMBEDDING_PROFILE,
-                    "payload_hash": payload_hash,
-                    "source_path": str(path) if collection == IMAGE_COLLECTION else None,
-                }
-                self.vector_store.upsert(
-                    collection,
-                    [
-                        VectorPoint(
-                            point_id=point_id,
-                            asset_id=str(row["asset_id"]),
-                            asset_version_id=str(row["asset_version_id"]),
-                            collection_name=collection,
-                            text=content,
-                            payload=payload,
-                        )
-                    ],
+                collection = IMAGE_COLLECTION if job_type == "image" else TEXT_COLLECTION
+                self._upsert_index_document(
+                    collection_name=collection,
+                    asset_id=str(row["asset_id"]),
+                    asset_version_id=str(row["asset_version_id"]),
+                    title=title,
+                    mime_type=mime_type,
+                    job_type=job_type,
+                    logical_unit_id="unit_0",
+                    logical_unit_type="image" if collection == IMAGE_COLLECTION else "chunk",
+                    text=content,
+                    source_path=str(path) if collection == IMAGE_COLLECTION else None,
+                    now=now,
                 )
-                self.db.execute(
-                    """
-                    INSERT OR REPLACE INTO search_documents(
-                        point_id, collection_name, asset_id, asset_version_id, title, mime_type,
-                        content, embedding_profile_id, upserted_at
+                if job_type == "image" and label_content:
+                    self._upsert_index_document(
+                        collection_name=IMAGE_LABEL_COLLECTION,
+                        asset_id=str(row["asset_id"]),
+                        asset_version_id=str(row["asset_version_id"]),
+                        title=title,
+                        mime_type=mime_type,
+                        job_type="image_labels",
+                        logical_unit_id="labels_0",
+                        logical_unit_type="image_labels",
+                        text=label_content,
+                        source_path=None,
+                        now=now,
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        point_id,
-                        collection,
-                        row["asset_id"],
-                        row["asset_version_id"],
-                        row["original_name"],
-                        row["mime_type"],
-                        content,
-                        DEFAULT_EMBEDDING_PROFILE,
-                        now,
-                    ),
-                )
-                self.db.execute(
-                    """
-                    INSERT OR REPLACE INTO qdrant_points(
-                        point_id, collection_name, asset_id, asset_version_id, logical_unit_id,
-                        logical_unit_type, vector_name, embedding_profile_id, payload_hash, upserted_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        point_id,
-                        collection,
-                        row["asset_id"],
-                        row["asset_version_id"],
-                        "unit_0",
-                        "image" if collection == IMAGE_COLLECTION else "chunk",
-                        "default",
-                        DEFAULT_EMBEDDING_PROFILE,
-                        payload_hash,
-                        now,
-                    ),
-                )
                 self.db.execute(
                     "UPDATE index_jobs SET status = 'completed', completed_at = ? WHERE index_job_id = ?",
                     (now, row["index_job_id"]),
@@ -142,10 +124,113 @@ class IndexService:
                 self.db.execute("UPDATE assets SET index_status = ? WHERE asset_id = ?", (asset_status, row["asset_id"]))
         return IndexProcessResult(indexed_count=indexed, failed_count=failed)
 
-    def _extract_content(self, path, job_type: str, title: str, mime_type: str) -> str:
+    def _extract_content(self, path, job_type: str, title: str, mime_type: str, label_content: str = "") -> str:
         if job_type == "image":
-            return f"{title} {mime_type} image photo picture screenshot"
+            return f"{title} {mime_type} image photo picture screenshot 图片 照片 {label_content}".strip()
         raw = path.read_bytes()
         text = raw.decode("utf-8", errors="ignore")
         text = re.sub(r"\s+", " ", text).strip()
         return f"{title} {text}".strip()
+
+    def _extract_image_label_content(self, path, job_type: str, title: str, mime_type: str) -> str:
+        if job_type != "image":
+            return ""
+        semantic_text = self.image_semantic_analyzer.describe(path, title, mime_type)
+        return re.sub(r"\s+", " ", f"{title} {mime_type} 图片 照片 image photo {semantic_text}").strip()
+
+    def _upsert_index_document(
+        self,
+        *,
+        collection_name: str,
+        asset_id: str,
+        asset_version_id: str,
+        title: str,
+        mime_type: str,
+        job_type: str,
+        logical_unit_id: str,
+        logical_unit_type: str,
+        text: str,
+        source_path: str | None,
+        now: str,
+    ) -> None:
+        embedding_profile_id = _embedding_profile_for_collection(collection_name)
+        payload_hash = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+        point_id = _stable_point_id(asset_id, asset_version_id, collection_name, logical_unit_id)
+        payload = {
+            "asset_id": asset_id,
+            "asset_version_id": asset_version_id,
+            "title": title,
+            "mime_type": mime_type,
+            "job_type": job_type,
+            "embedding_profile_id": embedding_profile_id,
+            "payload_hash": payload_hash,
+            "source_path": source_path,
+        }
+        self.vector_store.upsert(
+            collection_name,
+            [
+                VectorPoint(
+                    point_id=point_id,
+                    asset_id=asset_id,
+                    asset_version_id=asset_version_id,
+                    collection_name=collection_name,
+                    text=text,
+                    payload=payload,
+                )
+            ],
+        )
+        self.db.execute(
+            """
+            INSERT OR REPLACE INTO search_documents(
+                point_id, collection_name, asset_id, asset_version_id, title, mime_type,
+                content, embedding_profile_id, upserted_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                point_id,
+                collection_name,
+                asset_id,
+                asset_version_id,
+                title,
+                mime_type,
+                text,
+                embedding_profile_id,
+                now,
+            ),
+        )
+        self.db.execute(
+            """
+            INSERT OR REPLACE INTO qdrant_points(
+                point_id, collection_name, asset_id, asset_version_id, logical_unit_id,
+                logical_unit_type, vector_name, embedding_profile_id, payload_hash, upserted_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                point_id,
+                collection_name,
+                asset_id,
+                asset_version_id,
+                logical_unit_id,
+                logical_unit_type,
+                "default",
+                embedding_profile_id,
+                payload_hash,
+                now,
+            ),
+        )
+
+
+def _stable_point_id(asset_id: str, asset_version_id: str, collection_name: str, logical_unit_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"vibrary:{collection_name}:{asset_id}:{asset_version_id}:{logical_unit_id}"))
+
+
+def _embedding_profile_for_collection(collection_name: str) -> str:
+    if collection_name == IMAGE_COLLECTION:
+        return IMAGE_EMBEDDING_PROFILE
+    if collection_name == IMAGE_LABEL_COLLECTION:
+        return IMAGE_LABEL_EMBEDDING_PROFILE
+    if collection_name == TEXT_COLLECTION:
+        return TEXT_EMBEDDING_PROFILE
+    return DEFAULT_EMBEDDING_PROFILE
