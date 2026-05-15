@@ -6,7 +6,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from .config import IMAGE_EMBEDDING_PROFILE, IMAGE_LABEL_EMBEDDING_PROFILE, SCHEMA_VERSION, TEXT_EMBEDDING_PROFILE
+from .config import SCHEMA_VERSION
+from .pipeline import PipelineConfig
 from .timeutil import utc_now
 
 
@@ -37,56 +38,7 @@ class Database:
             """,
             (SCHEMA_VERSION, utc_now()),
         )
-        self.executemany(
-            """
-            INSERT OR IGNORE INTO embedding_profiles(
-                embedding_profile_id, model_name, model_revision, modality, dimension,
-                distance, runtime, local_model_path, license_note, is_default, created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    TEXT_EMBEDDING_PROFILE,
-                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                    "mvp",
-                    "text",
-                    384,
-                    "Cosine",
-                    "fastembed",
-                    "",
-                    "model must be downloaded into the local models directory for production embedding",
-                    1,
-                    utc_now(),
-                ),
-                (
-                    IMAGE_EMBEDDING_PROFILE,
-                    "Qdrant/clip-ViT-B-32-vision",
-                    "mvp",
-                    "image",
-                    512,
-                    "Cosine",
-                    "fastembed",
-                    "",
-                    "CLIP image encoder used for Qdrant image-semantic vectors",
-                    0,
-                    utc_now(),
-                ),
-                (
-                    IMAGE_LABEL_EMBEDDING_PROFILE,
-                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                    "mvp",
-                    "image_label_text",
-                    384,
-                    "Cosine",
-                    "fastembed",
-                    "",
-                    "bilingual visual labels generated from FastEmbed CLIP concepts and stored in Qdrant",
-                    0,
-                    utc_now(),
-                ),
-            ],
-        )
+        self.upsert_embedding_profile(PipelineConfig.default().embedding.profile_row())
         self.connection.commit()
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
@@ -232,6 +184,41 @@ class Database:
             (cache_entry_id, device_id, asset_id, cache_type, relative_path, size_bytes, now, now, int(can_delete)),
         )
         return cache_entry_id
+
+    def upsert_embedding_profile(self, profile: dict[str, object]) -> None:
+        now = utc_now()
+        self.execute(
+            """
+            INSERT INTO embedding_profiles(
+                embedding_profile_id, model_name, model_revision, modality, dimension,
+                distance, runtime, local_model_path, license_note, is_default, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(embedding_profile_id) DO UPDATE SET
+                model_name = excluded.model_name,
+                model_revision = excluded.model_revision,
+                modality = excluded.modality,
+                dimension = excluded.dimension,
+                distance = excluded.distance,
+                runtime = excluded.runtime,
+                local_model_path = excluded.local_model_path,
+                license_note = excluded.license_note,
+                is_default = excluded.is_default
+            """,
+            (
+                profile["embedding_profile_id"],
+                profile["model_name"],
+                profile["model_revision"],
+                profile["modality"],
+                profile["dimension"],
+                profile["distance"],
+                profile["runtime"],
+                profile.get("local_model_path", ""),
+                profile.get("license_note", ""),
+                profile.get("is_default", 0),
+                now,
+            ),
+        )
 
 
 SCHEMA_SQL = """

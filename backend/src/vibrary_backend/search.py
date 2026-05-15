@@ -1,17 +1,26 @@
 from __future__ import annotations
 
-from .config import IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, AppPaths
+from .config import AppPaths
 from .database import Database
+from .pipeline import PipelineConfig
 from .resolver import ReplicaResolver
 from .vector_store import VectorStore, default_collections
 
 
 class SearchService:
-    def __init__(self, db: Database, paths: AppPaths, resolver: ReplicaResolver, vector_store: VectorStore):
+    def __init__(
+        self,
+        db: Database,
+        paths: AppPaths,
+        resolver: ReplicaResolver,
+        vector_store: VectorStore,
+        pipeline: PipelineConfig | None = None,
+    ):
         self.db = db
         self.paths = paths
         self.resolver = resolver
         self.vector_store = vector_store
+        self.pipeline = pipeline or PipelineConfig.default()
 
     def search(
         self,
@@ -23,7 +32,7 @@ class SearchService:
         filters: dict | None = None,
     ) -> dict[str, object]:
         hits = []
-        for collection in default_collections(search_types):
+        for collection in default_collections(search_types, self.pipeline.collections):
             hits.extend(self.vector_store.query(collection, query, limit, filters))
         hits.sort(key=lambda hit: hit.score, reverse=True)
         results = []
@@ -45,7 +54,7 @@ class SearchService:
             if row is None:
                 continue
             resolved = self.resolver.resolve(asset_id, device_id)
-            matched_by = [_matched_by_collection(hit.collection_name)]
+            matched_by = [self._matched_by_collection(hit.collection_name)]
             results.append(
                 {
                     "asset_id": asset_id,
@@ -69,10 +78,9 @@ class SearchService:
             return None
         return content[:160]
 
-
-def _matched_by_collection(collection_name: str) -> str:
-    if collection_name == IMAGE_COLLECTION:
-        return "image_semantic"
-    if collection_name == IMAGE_LABEL_COLLECTION:
-        return "image_labels"
-    return "text"
+    def _matched_by_collection(self, collection_name: str) -> str:
+        if collection_name == self.pipeline.collections.image:
+            return "image_semantic"
+        if collection_name == self.pipeline.collections.image_labels:
+            return "image_labels"
+        return "text"

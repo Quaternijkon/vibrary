@@ -108,6 +108,44 @@ export type LibraryAssetsResponse = {
   assets: LibraryAsset[];
 };
 
+export type IndexStatusResponse = {
+  pipeline: {
+    embedding: {
+      provider_id: string;
+      profile_id: string;
+      model_name: string;
+      model_revision: string;
+      dimension: number;
+      runtime: string;
+      trust_remote_code: boolean;
+    };
+    retrieval: {
+      mode: "hnsw" | "full_scan";
+      hnsw: {
+        m: number;
+        ef_construct: number;
+        full_scan_threshold: number;
+        search_ef: number;
+      };
+    };
+    collections: {
+      text: string;
+      image: string;
+      image_labels: string;
+    };
+  };
+  options: {
+    embedding_providers: Array<{ id: string; label: string; model_name: string; dimension: number; modalities: string[] }>;
+    retrieval_modes: Array<"hnsw" | "full_scan">;
+  };
+  queue_counts: Record<string, number>;
+  point_counts: Record<string, number>;
+  asset_counts: {
+    total: number;
+    indexed: number;
+  };
+};
+
 export class BackendClient {
   constructor(
     private readonly baseUrl: string,
@@ -138,6 +176,14 @@ export class BackendClient {
 
   processIndexing(limit = 10): Promise<{ indexed_count: number; failed_count: number }> {
     return this.post(`/v1/queues/indexing/process?limit=${limit}`, {});
+  }
+
+  indexStatus(): Promise<IndexStatusResponse> {
+    return this.get("/v1/index/status");
+  }
+
+  rebuildIndex(): Promise<{ queued_count: number }> {
+    return this.post("/v1/index/rebuild", {});
   }
 
   pairingPayload(): Promise<PairingPayload> {

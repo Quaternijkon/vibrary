@@ -19,6 +19,14 @@ export type DesktopSnapshot = {
     lanEnabled: boolean;
     discoveryEnabled: boolean;
     autoIndexEnabled: boolean;
+    embeddingProviderId: "jina-v5-omni-small";
+    retrievalMode: "hnsw" | "full_scan";
+    hnsw: {
+      m: number;
+      efConstruct: number;
+      fullScanThreshold: number;
+      searchEf: number;
+    };
   };
   discovery: {
     running: boolean;

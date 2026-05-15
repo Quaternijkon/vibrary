@@ -61,6 +61,14 @@ export function buildBackendCommand(input: {
   qdrantUrl: string;
   qdrantApiKey: string;
   autoIndexEnabled?: boolean;
+  embeddingProviderId?: string;
+  retrievalMode?: string;
+  hnsw?: {
+    m: number;
+    efConstruct: number;
+    fullScanThreshold: number;
+    searchEf: number;
+  };
 }): SidecarCommand {
   return {
     file: path.join(input.resourcesPath, "sidecars", "backend", "backend.exe"),
@@ -72,7 +80,13 @@ export function buildBackendCommand(input: {
       ...(input.publicUrl ? { VIBRARY_PUBLIC_URL: input.publicUrl } : {}),
       VIBRARY_QDRANT_URL: input.qdrantUrl,
       VIBRARY_QDRANT_API_KEY: input.qdrantApiKey,
-      VIBRARY_AUTO_INDEX: input.autoIndexEnabled === false ? "0" : "1"
+      VIBRARY_AUTO_INDEX: input.autoIndexEnabled === false ? "0" : "1",
+      VIBRARY_EMBEDDING_PROVIDER: input.embeddingProviderId ?? "jina-v5-omni-small",
+      VIBRARY_RETRIEVAL_MODE: input.retrievalMode ?? "hnsw",
+      VIBRARY_QDRANT_HNSW_M: String(input.hnsw?.m ?? 16),
+      VIBRARY_QDRANT_HNSW_EF_CONSTRUCT: String(input.hnsw?.efConstruct ?? 200),
+      VIBRARY_QDRANT_HNSW_FULL_SCAN_THRESHOLD: String(input.hnsw?.fullScanThreshold ?? 10000),
+      VIBRARY_QDRANT_HNSW_SEARCH_EF: String(input.hnsw?.searchEf ?? 128)
     }
   };
 }

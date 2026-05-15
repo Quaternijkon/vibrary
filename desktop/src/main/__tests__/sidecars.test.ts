@@ -38,7 +38,15 @@ describe("buildBackendCommand", () => {
       publicUrl: "http://192.168.1.20:8765",
       qdrantUrl: "http://127.0.0.1:6333",
       qdrantApiKey: "secret-key",
-      autoIndexEnabled: true
+      autoIndexEnabled: true,
+      embeddingProviderId: "jina-v5-omni-small",
+      retrievalMode: "full_scan",
+      hnsw: {
+        m: 24,
+        efConstruct: 180,
+        fullScanThreshold: 640,
+        searchEf: 96
+      }
     });
 
     expect(command.file).toBe("C:\\Tools\\Vibrary\\resources\\sidecars\\backend\\backend.exe");
@@ -50,7 +58,13 @@ describe("buildBackendCommand", () => {
       VIBRARY_PUBLIC_URL: "http://192.168.1.20:8765",
       VIBRARY_QDRANT_URL: "http://127.0.0.1:6333",
       VIBRARY_QDRANT_API_KEY: "secret-key",
-      VIBRARY_AUTO_INDEX: "1"
+      VIBRARY_AUTO_INDEX: "1",
+      VIBRARY_EMBEDDING_PROVIDER: "jina-v5-omni-small",
+      VIBRARY_RETRIEVAL_MODE: "full_scan",
+      VIBRARY_QDRANT_HNSW_M: "24",
+      VIBRARY_QDRANT_HNSW_EF_CONSTRUCT: "180",
+      VIBRARY_QDRANT_HNSW_FULL_SCAN_THRESHOLD: "640",
+      VIBRARY_QDRANT_HNSW_SEARCH_EF: "96"
     });
   });
 });

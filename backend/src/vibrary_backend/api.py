@@ -16,9 +16,9 @@ from pydantic import BaseModel, Field
 from .cache import CacheService
 from .config import AppPaths, BackendSettings
 from .database import Database
-from .embedding import FastEmbedEmbeddingProvider
-from .image_semantics import FastEmbedImageSemanticAnalyzer, NoopImageSemanticAnalyzer
-from .indexing import IndexService
+from .embedding import create_embedding_provider
+from .image_semantics import NoopImageSemanticAnalyzer
+from .indexing import IndexMaintenanceService, IndexService
 from .library import LibraryService
 from .pairing import PairingService
 from .resolver import ReplicaResolver
@@ -101,17 +101,21 @@ class Services:
         self.paths = paths or self.settings.paths
         self.db = Database(self.paths.database_path)
         self.db.initialize()
+        self.db.upsert_embedding_profile(self.settings.pipeline.embedding.profile_row())
         self.db.upsert_device("windows-local", "Windows", "windows", is_trusted=True)
         self.vector_store = vector_store or self._create_vector_store()
-        image_semantic_analyzer = (
-            FastEmbedImageSemanticAnalyzer(self.paths.models_dir)
-            if self.settings.use_qdrant and vector_store is None
-            else NoopImageSemanticAnalyzer()
-        )
-        self.library = LibraryService(self.db, self.paths)
+        image_semantic_analyzer = NoopImageSemanticAnalyzer()
+        self.library = LibraryService(self.db, self.paths, pipeline=self.settings.pipeline)
         self.resolver = ReplicaResolver(self.db, self.paths)
-        self.indexer = IndexService(self.db, self.paths, self.vector_store, image_semantic_analyzer=image_semantic_analyzer)
-        self.search = SearchService(self.db, self.paths, self.resolver, self.vector_store)
+        self.indexer = IndexService(
+            self.db,
+            self.paths,
+            self.vector_store,
+            image_semantic_analyzer=image_semantic_analyzer,
+            pipeline=self.settings.pipeline,
+        )
+        self.index_maintenance = IndexMaintenanceService(self.db, self.vector_store, pipeline=self.settings.pipeline)
+        self.search = SearchService(self.db, self.paths, self.resolver, self.vector_store, pipeline=self.settings.pipeline)
         self.uploads = UploadService(self.db, self.paths, self.library)
         self.cache = CacheService(self.db, self.paths)
         self.pairing = PairingService(self.db)
@@ -123,7 +127,8 @@ class Services:
         return QdrantVectorStore(
             self.settings.qdrant_url,
             self.settings.qdrant_api_key,
-            embedding_provider=FastEmbedEmbeddingProvider(self.paths.models_dir),
+            embedding_provider=create_embedding_provider(self.settings.pipeline, self.paths.models_dir),
+            retrieval=self.settings.pipeline.retrieval,
         )
 
 
@@ -147,7 +152,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.6")
+    app = FastAPI(title="Vibrary Backend", version="0.1.7")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,
@@ -168,6 +173,8 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             return await call_next(request)
         if request.url.path.startswith("/v1/imports/windows") and not is_local_client:
             return JSONResponse({"detail": "Windows import is local-only"}, status_code=403)
+        if request.url.path.startswith("/v1/index/") and not is_local_client:
+            return JSONResponse({"detail": "index maintenance is local-only"}, status_code=403)
         if is_local_client:
             return await call_next(request)
         authorization = request.headers.get("authorization", "")
@@ -208,6 +215,7 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             "qdrant": {"url": services.settings.qdrant_url, "exposed_to_lan": False},
             "public_url": services.settings.public_url,
             "auto_index": services.settings.auto_index,
+            "pipeline": services.settings.pipeline.as_payload(),
             "queued_image_label_backfill_count": services.queued_image_label_backfill_count,
         }
 
@@ -247,7 +255,18 @@ def create_app(paths: AppPaths | None = None, settings: BackendSettings | None =
             "qdrant_url": services.settings.qdrant_url,
             "collections": point_counts,
             "embedding_profiles": profiles,
+            "pipeline": services.settings.pipeline.as_payload(),
         }
+
+    @app.get("/v1/index/status")
+    def index_status() -> dict[str, Any]:
+        return services.index_maintenance.status()
+
+    @app.post("/v1/index/rebuild")
+    def rebuild_index(background_tasks: BackgroundTasks) -> dict[str, int]:
+        result = services.index_maintenance.rebuild_all()
+        _schedule_indexing_kick(background_tasks, services, int(result["queued_count"]))
+        return result
 
     @app.get("/v1/devices")
     def devices() -> list[dict[str, Any]]:

@@ -12,6 +12,7 @@ from vibrary_backend.config import AppPaths, IMAGE_LABEL_COLLECTION, TEXT_COLLEC
 from vibrary_backend.database import Database
 from vibrary_backend.indexing import IndexService
 from vibrary_backend.library import LibraryService
+from vibrary_backend.pipeline import HnswIndexConfig, RetrievalMode, RetrievalStageConfig
 from vibrary_backend.resolver import ReplicaResolver
 from vibrary_backend.search import SearchService
 from vibrary_backend.vector_store import InMemoryVectorStore, QdrantVectorStore, VectorPoint, default_collections
@@ -212,10 +213,96 @@ class QdrantContractTests(unittest.TestCase):
             ],
         )
 
+        creation_payload = next(payload for method, path, payload in calls if method == "PUT" and path == f"/collections/{IMAGE_LABEL_COLLECTION}")
+        self.assertEqual(creation_payload["vectors"], {"size": 3, "distance": "Cosine"})
+
+    def test_qdrant_collection_creation_applies_hnsw_config(self) -> None:
+        retrieval = RetrievalStageConfig(
+            mode=RetrievalMode.HNSW,
+            hnsw=HnswIndexConfig(m=32, ef_construct=240, full_scan_threshold=512, search_ef=80),
+        )
+        store = QdrantVectorStore(
+            "http://127.0.0.1:6333",
+            "secret",
+            embedding_provider=StaticEmbeddingProvider(),
+            retrieval=retrieval,
+        )
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+            calls.append((method, path, payload))
+            if path == f"/collections/{TEXT_COLLECTION}/exists":
+                return {"result": {"exists": False}}
+            return {"result": {"points": []}}
+
+        store._request = fake_request  # type: ignore[method-assign]
+
+        store.query(TEXT_COLLECTION, "monkey", limit=3)
+
         self.assertIn(
-            ("PUT", f"/collections/{IMAGE_LABEL_COLLECTION}", {"vectors": {"size": 3, "distance": "Cosine"}}),
+            (
+                "PUT",
+                f"/collections/{TEXT_COLLECTION}",
+                {
+                    "vectors": {"size": 3, "distance": "Cosine"},
+                    "hnsw_config": {"m": 32, "ef_construct": 240, "full_scan_threshold": 512},
+                },
+            ),
             calls,
         )
+
+    def test_qdrant_query_uses_hnsw_search_params_when_hnsw_mode_is_selected(self) -> None:
+        retrieval = RetrievalStageConfig(
+            mode=RetrievalMode.HNSW,
+            hnsw=HnswIndexConfig(search_ef=123),
+        )
+        store = QdrantVectorStore(
+            "http://127.0.0.1:6333",
+            "secret",
+            embedding_provider=StaticEmbeddingProvider(),
+            retrieval=retrieval,
+        )
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+            calls.append((method, path, payload))
+            if path == f"/collections/{TEXT_COLLECTION}/exists":
+                return {"result": {"exists": True}}
+            if path == f"/collections/{TEXT_COLLECTION}/points/query":
+                return {"result": {"points": []}}
+            return {"result": {}}
+
+        store._request = fake_request  # type: ignore[method-assign]
+
+        store.query(TEXT_COLLECTION, "monkey", limit=3)
+
+        query_payload = next(payload for method, path, payload in calls if method == "POST" and path.endswith("/points/query"))
+        self.assertEqual(query_payload["params"], {"hnsw_ef": 123, "exact": False})
+
+    def test_qdrant_query_uses_exact_search_params_when_full_scan_mode_is_selected(self) -> None:
+        retrieval = RetrievalStageConfig(mode=RetrievalMode.FULL_SCAN)
+        store = QdrantVectorStore(
+            "http://127.0.0.1:6333",
+            "secret",
+            embedding_provider=StaticEmbeddingProvider(),
+            retrieval=retrieval,
+        )
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+            calls.append((method, path, payload))
+            if path == f"/collections/{TEXT_COLLECTION}/exists":
+                return {"result": {"exists": True}}
+            if path == f"/collections/{TEXT_COLLECTION}/points/query":
+                return {"result": {"points": []}}
+            return {"result": {}}
+
+        store._request = fake_request  # type: ignore[method-assign]
+
+        store.query(TEXT_COLLECTION, "monkey", limit=3)
+
+        query_payload = next(payload for method, path, payload in calls if method == "POST" and path.endswith("/points/query"))
+        self.assertEqual(query_payload["params"], {"exact": True})
 
 
 if __name__ == "__main__":

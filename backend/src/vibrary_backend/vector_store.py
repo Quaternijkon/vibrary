@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .config import IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, TEXT_COLLECTION
-from .embedding import EmbeddingProvider, FastEmbedEmbeddingProvider
+from .embedding import EmbeddingProvider, create_embedding_provider
+from .pipeline import CollectionNames, PipelineConfig, RetrievalStageConfig
 
 
 VECTOR_DIMENSION = 64
@@ -63,6 +64,9 @@ class VectorStore(Protocol):
     def query(self, collection_name: str, query: str, limit: int, filters: dict[str, object] | None = None) -> list[SearchHit]:
         ...
 
+    def delete_collections(self, collection_names: list[str]) -> None:
+        ...
+
 
 class InMemoryVectorStore:
     def __init__(self) -> None:
@@ -101,12 +105,25 @@ class InMemoryVectorStore:
         hits.sort(key=lambda hit: hit.score, reverse=True)
         return hits[:limit]
 
+    def delete_collections(self, collection_names: list[str]) -> None:
+        for collection_name in collection_names:
+            self.points.pop(collection_name, None)
+        self.upsert_calls[:] = [call for call in self.upsert_calls if call.collection_name not in collection_names]
+        self.query_calls[:] = [call for call in self.query_calls if call.collection_name not in collection_names]
+
 
 class QdrantVectorStore:
-    def __init__(self, url: str, api_key: str, embedding_provider: EmbeddingProvider | None = None):
+    def __init__(
+        self,
+        url: str,
+        api_key: str,
+        embedding_provider: EmbeddingProvider | None = None,
+        retrieval: RetrievalStageConfig | None = None,
+    ):
         self.url = _validated_local_qdrant_url(url)
         self.api_key = api_key
-        self.embedding_provider = embedding_provider or FastEmbedEmbeddingProvider()
+        self.retrieval = retrieval or PipelineConfig.default().retrieval
+        self.embedding_provider = embedding_provider or create_embedding_provider(PipelineConfig.default())
         self._collections_ready: set[str] = set()
 
     def upsert(self, collection_name: str, points: list[VectorPoint]) -> None:
@@ -134,6 +151,7 @@ class QdrantVectorStore:
             "query": self.embedding_provider.embed_query(collection_name, query),
             "limit": limit,
             "with_payload": True,
+            "params": self.retrieval.qdrant_search_params(),
         }
         qdrant_filter = _qdrant_filter(filters)
         if qdrant_filter:
@@ -156,8 +174,13 @@ class QdrantVectorStore:
         if collection_name in self._collections_ready:
             return
         if not self._collection_exists(collection_name):
-            payload = {"vectors": {"size": self.embedding_provider.dimension(collection_name), "distance": "Cosine"}}
+            payload = {
+                "vectors": {"size": self.embedding_provider.dimension(collection_name), "distance": "Cosine"},
+                "hnsw_config": self.retrieval.hnsw.qdrant_collection_payload(),
+            }
             self._request("PUT", f"/collections/{collection_name}", payload)
+        else:
+            self._update_hnsw_config(collection_name)
         self._ensure_payload_indexes(collection_name)
         self._collections_ready.add(collection_name)
 
@@ -181,6 +204,28 @@ class QdrantVectorStore:
             if exc.code in {400, 409} and _http_error_mentions_existing_index(exc):
                 return
             raise
+
+    def _update_hnsw_config(self, collection_name: str) -> None:
+        try:
+            self._request(
+                "PATCH",
+                f"/collections/{collection_name}",
+                {"hnsw_config": self.retrieval.hnsw.qdrant_collection_payload()},
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code in {400, 409}:
+                return
+            raise
+
+    def delete_collections(self, collection_names: list[str]) -> None:
+        for collection_name in collection_names:
+            try:
+                self._request("DELETE", f"/collections/{collection_name}")
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise
+            self._collections_ready.discard(collection_name)
 
     def _request(self, method: str, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -231,15 +276,9 @@ def _http_error_mentions_existing_index(exc: urllib.error.HTTPError) -> bool:
     return "already" in body.lower() and "index" in body.lower()
 
 
-def default_collections(search_types: list[str] | None = None) -> list[str]:
-    requested = set(search_types or ["text", "image"])
-    collections: list[str] = []
-    if "text" in requested or "ocr" in requested:
-        collections.append(TEXT_COLLECTION)
-    if "image" in requested:
-        collections.append(IMAGE_LABEL_COLLECTION)
-        collections.append(IMAGE_COLLECTION)
-    return collections
+def default_collections(search_types: list[str] | None = None, collections: CollectionNames | None = None) -> list[str]:
+    names = collections or PipelineConfig.default().collections
+    return names.for_search_types(search_types)
 
 
 def _tokens(value: str) -> set[str]:

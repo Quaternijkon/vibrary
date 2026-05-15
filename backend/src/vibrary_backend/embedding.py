@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .config import IMAGE_COLLECTION
+from .pipeline import PipelineConfig
 
 
 TEXT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -88,12 +89,102 @@ class FastEmbedEmbeddingProvider:
         return TextEmbedding(model_name=model_name, **kwargs)
 
 
+class JinaOmniEmbeddingProvider:
+    def __init__(self, pipeline: PipelineConfig, cache_dir: Path | None = None):
+        self.pipeline = pipeline
+        self.cache_dir = str(cache_dir) if cache_dir else None
+        self._model = None
+
+    def dimension(self, collection_name: str) -> int:
+        return self.pipeline.embedding.dimension
+
+    def embed_document(self, collection_name: str, text: str, payload: dict[str, object]) -> list[float]:
+        source_path = payload.get("source_path")
+        if collection_name == self.pipeline.collections.image and isinstance(source_path, str) and Path(source_path).exists():
+            return self._encode_image_document(Path(source_path))
+        return self._encode_document(text)
+
+    def embed_query(self, collection_name: str, query: str) -> list[float]:
+        return self._encode_query(query)
+
+    def _encode_document(self, text: str) -> list[float]:
+        model = self._load_model()
+        return _as_float_list(_first_vector(_call_model(model, ["encode_document", "encode"], [text])))
+
+    def _encode_query(self, query: str) -> list[float]:
+        model = self._load_model()
+        return _as_float_list(_first_vector(_call_model(model, ["encode_query", "encode"], [query])))
+
+    def _encode_image_document(self, path: Path) -> list[float]:
+        model = self._load_model()
+        image = _open_rgb_image(path)
+        return _as_float_list(_first_vector(_call_model(model, ["encode_image", "encode"], [image])))
+
+    def _load_model(self):
+        if self._model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as exc:  # pragma: no cover - depends on packaged runtime.
+                raise RuntimeError(
+                    "sentence-transformers is required for jina-v5-omni-small embedding; install backend requirements"
+                ) from exc
+            kwargs = {
+                "trust_remote_code": self.pipeline.embedding.trust_remote_code,
+                "model_kwargs": {"default_task": "retrieval", "modality": "vision"},
+            }
+            if self.cache_dir:
+                kwargs["cache_folder"] = self.cache_dir
+            self._model = SentenceTransformer(self.pipeline.embedding.model_name, **kwargs)
+        return self._model
+
+
+def create_embedding_provider(pipeline: PipelineConfig, cache_dir: Path | None = None) -> EmbeddingProvider:
+    if pipeline.embedding.provider_id == "jina-v5-omni-small":
+        return JinaOmniEmbeddingProvider(pipeline, cache_dir=cache_dir)
+    raise ValueError(f"unsupported embedding provider: {pipeline.embedding.provider_id}")
+
+
 def _as_float_list(vector) -> list[float]:
     if hasattr(vector, "tolist"):
         values = vector.tolist()
     else:
         values = list(vector)
     return [float(value) for value in values]
+
+
+def _call_model(model, method_names: list[str], values: list[object]):
+    last_type_error: TypeError | None = None
+    for name in method_names:
+        method = getattr(model, name, None)
+        if method is None:
+            continue
+        try:
+            return method(values, convert_to_numpy=True)
+        except TypeError as exc:
+            last_type_error = exc
+            try:
+                return method(values)
+            except TypeError as inner_exc:
+                last_type_error = inner_exc
+    if last_type_error is not None:
+        raise last_type_error
+    raise RuntimeError("embedding model does not expose an encoding method")
+
+
+def _first_vector(result):
+    if isinstance(result, list) and result:
+        return result[0]
+    if hasattr(result, "shape") and len(result.shape) > 1:
+        return result[0]
+    return result
+
+
+def _open_rgb_image(path: Path):
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - depends on packaged runtime.
+        raise RuntimeError("Pillow is required for image embedding") from exc
+    return Image.open(path).convert("RGB")
 
 
 _VISUAL_QUERY_ALIASES = {

@@ -29,7 +29,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -569,6 +570,60 @@ p {
   width: 18px;
   height: 18px;
   accent-color: var(--primary);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 42px;
+  border-top: 1px solid var(--line);
+}
+
+.field-row:first-of-type {
+  border-top: 0;
+}
+
+.field-row span {
+  color: var(--muted);
+}
+
+.field-row input,
+.field-row select {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fbfcfa;
+  color: var(--text);
+}
+
+.model-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.metadata-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.metadata-grid div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.metadata-grid dt {
+  color: var(--muted);
+}
+
+.metadata-grid dd {
+  overflow-wrap: anywhere;
 }
 
 .message-bar {

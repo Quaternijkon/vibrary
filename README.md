@@ -107,12 +107,15 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
   discovery packets and joins by entering the 6-digit code shown in the desktop
   Devices panel.
 - Files must be copied into the Windows library before indexing.
-- Production indexing uses FastEmbed-backed text, image, and image-label
-  embedding providers before upserting into Qdrant. Images are indexed both as
-  raw visual vectors and as bilingual visual-label text vectors so Chinese
-  visual searches stay on the Qdrant path. The backend auto-indexer processes
-  queued jobs by default, and the manual process button remains as a fallback.
-  The in-memory vector store is used by unit tests.
+- Production indexing defaults to `jinaai/jina-embeddings-v5-omni-small` through
+  the backend pipeline layer, then upserts versioned 1024-dimensional vectors
+  into Qdrant. Images are indexed as raw visual vectors plus a label-text
+  collection for transparent diagnostics. Retrieval is configurable in the
+  desktop Settings panel between Qdrant HNSW search and Qdrant exact traversal;
+  HNSW index/search parameters are also visible and editable. The backend
+  auto-indexer processes queued jobs by default, and manual process/rebuild
+  buttons remain as user-visible controls. The in-memory vector store is used
+  by unit tests.
 - Cache cleanup only deletes application-owned cache files. It does not delete
   Android SAF source originals, Windows external source originals, library
   copies, models, SQLite data, or Qdrant storage.

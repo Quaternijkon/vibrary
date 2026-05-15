@@ -57,6 +57,35 @@ describe("BackendClient", () => {
     });
   });
 
+  it("loads active index pipeline status", async () => {
+    const fetcher = vi.fn(async () =>
+      response({
+        pipeline: { embedding: { provider_id: "jina-v5-omni-small" } },
+        queue_counts: { queued: 2 }
+      })
+    );
+    const client = new BackendClient("http://127.0.0.1:8765", fetcher);
+
+    const result = await client.indexStatus();
+
+    expect(result.pipeline.embedding.provider_id).toBe("jina-v5-omni-small");
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:8765/v1/index/status", { method: "GET" });
+  });
+
+  it("requests a full active index rebuild through the backend", async () => {
+    const fetcher = vi.fn(async () => response({ queued_count: 3 }));
+    const client = new BackendClient("http://127.0.0.1:8765", fetcher);
+
+    const result = await client.rebuildIndex();
+
+    expect(result.queued_count).toBe(3);
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:8765/v1/index/rebuild", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+  });
+
   it("binds the browser fetch function when no test fetcher is injected", async () => {
     const browserFetch = vi.fn(function (this: unknown) {
       if (this !== globalThis) {

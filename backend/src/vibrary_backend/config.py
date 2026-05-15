@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import os
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from .pipeline import JINA_OMNI_SMALL_PROFILE, PipelineConfig
 
 
 PRODUCT_NAME = "Vibrary"
-SCHEMA_VERSION = "v1"
-TEXT_COLLECTION = "text_chunks_v1"
-IMAGE_COLLECTION = "image_semantic_v1"
-IMAGE_LABEL_COLLECTION = "image_labels_v1"
-TEXT_EMBEDDING_PROFILE = "text-mini-multilingual-v1"
-IMAGE_EMBEDDING_PROFILE = "image-clip-vit-b32-v1"
-IMAGE_LABEL_EMBEDDING_PROFILE = "image-labels-multilingual-v1"
+SCHEMA_VERSION = "v2"
+_DEFAULT_PIPELINE = PipelineConfig.default()
+TEXT_COLLECTION = _DEFAULT_PIPELINE.collections.text
+IMAGE_COLLECTION = _DEFAULT_PIPELINE.collections.image
+IMAGE_LABEL_COLLECTION = _DEFAULT_PIPELINE.collections.image_labels
+TEXT_EMBEDDING_PROFILE = JINA_OMNI_SMALL_PROFILE
+IMAGE_EMBEDDING_PROFILE = JINA_OMNI_SMALL_PROFILE
+IMAGE_LABEL_EMBEDDING_PROFILE = JINA_OMNI_SMALL_PROFILE
 DEFAULT_EMBEDDING_PROFILE = TEXT_EMBEDDING_PROFILE
 DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024
 
@@ -55,7 +58,7 @@ class AppPaths:
             upload_temp_dir=cache_dir / "upload-temp",
             parse_temp_dir=cache_dir / "parse-temp",
             qdrant_storage_dir=data_dir / "qdrant" / "storage",
-            models_dir=data_dir / "models" / "fastembed",
+            models_dir=data_dir / "models",
             logs_dir=data_dir / "logs",
         )
         paths.ensure()
@@ -115,6 +118,7 @@ class BackendSettings:
     qdrant_api_key: str
     use_qdrant: bool
     auto_index: bool = True
+    pipeline: PipelineConfig = field(default_factory=PipelineConfig.default)
 
     @classmethod
     def from_env(cls) -> "BackendSettings":
@@ -130,6 +134,7 @@ class BackendSettings:
             qdrant_api_key=os.environ.get("VIBRARY_QDRANT_API_KEY", "dev-local-qdrant-key"),
             use_qdrant=os.environ.get("VIBRARY_USE_QDRANT", "1") != "0",
             auto_index=os.environ.get("VIBRARY_AUTO_INDEX", "1") != "0",
+            pipeline=PipelineConfig.from_env(),
         )
 
 

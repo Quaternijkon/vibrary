@@ -15,7 +15,8 @@ describe("loadBackendDashboardData", () => {
         pairing_code: "123456",
         pairing_token: "123456",
         expires_at: "2026-05-13T15:00:00Z"
-      }))
+      })),
+      indexStatus: vi.fn(async () => null)
     } as unknown as BackendClient;
 
     const data = await loadBackendDashboardData(client);
@@ -23,6 +24,7 @@ describe("loadBackendDashboardData", () => {
     expect(client.pairingPayload).toHaveBeenCalledTimes(1);
     expect(data.pairingPayload?.pairing_code).toBe("123456");
     expect(client.libraryAssets).toHaveBeenCalledTimes(1);
+    expect(client.indexStatus).toHaveBeenCalledTimes(1);
     expect(data.libraryAssets.assets[0].title).toBe("note.txt");
   });
 });

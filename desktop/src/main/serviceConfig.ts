@@ -57,7 +57,10 @@ export function createServiceConfig(input: { qdrantPort?: number; desktopSetting
       publicUrl,
       qdrantUrl,
       qdrantApiKey,
-      autoIndexEnabled: desktopSettings.autoIndexEnabled
+      autoIndexEnabled: desktopSettings.autoIndexEnabled,
+      embeddingProviderId: desktopSettings.embeddingProviderId,
+      retrievalMode: desktopSettings.retrievalMode,
+      hnsw: desktopSettings.hnsw
     })
   };
 }
@@ -85,7 +88,11 @@ export function isPackagedApp(): boolean {
 
 export function resolveBackendListenHost(
   env: NodeJS.ProcessEnv,
-  desktopSettings: DesktopSettings = { lanEnabled: true, discoveryEnabled: true, autoIndexEnabled: true }
+  desktopSettings: Pick<DesktopSettings, "lanEnabled" | "discoveryEnabled" | "autoIndexEnabled"> = {
+    lanEnabled: true,
+    discoveryEnabled: true,
+    autoIndexEnabled: true
+  }
 ): string {
   if (env.VIBRARY_BACKEND_HOST) {
     return env.VIBRARY_BACKEND_HOST;

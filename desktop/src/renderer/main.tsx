@@ -24,6 +24,7 @@ import {
   BackendClient,
   type Device,
   type ImportSummary,
+  type IndexStatusResponse,
   type LibraryAsset,
   type LibraryAssetsResponse,
   type PairingPayload,
@@ -64,6 +65,7 @@ function App() {
   const [indexJobs, setIndexJobs] = useState<QueueItem[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(null);
+  const [indexStatus, setIndexStatus] = useState<IndexStatusResponse | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [cacheSummary, setCacheSummary] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<string>(desktopCopy.messages.ready);
@@ -139,6 +141,7 @@ function App() {
     setCacheSummary(nextData.cacheSummary);
     setDevices(nextData.devices);
     setPairingPayload(nextData.pairingPayload);
+    setIndexStatus(nextData.indexStatus);
     setLibraryAssets(nextData.libraryAssets);
   }
 
@@ -178,6 +181,13 @@ function App() {
     const processed = await client.processIndexing();
     await refreshBackendData(client);
     setMessage(desktopCopy.messages.indexed(processed.indexed_count, processed.failed_count));
+  }
+
+  async function rebuildIndex() {
+    if (!client) return;
+    const rebuilt = await client.rebuildIndex();
+    await refreshBackendData(client);
+    setMessage(`已重新加入索引队列：${rebuilt.queued_count} 项`);
   }
 
   async function runSearch() {
@@ -303,8 +313,11 @@ function App() {
           <SettingsPage
             snapshot={snapshot}
             cacheSummary={cacheSummary}
+            indexStatus={indexStatus}
             onUpdate={updateSettings}
             onClearDownloads={clearDownloads}
+            onProcessIndexing={processIndexing}
+            onRebuildIndex={rebuildIndex}
           />
         ) : null}
         <footer className="message-bar">{message}</footer>
@@ -610,10 +623,22 @@ function DevicesPanel(props: {
 function SettingsPage(props: {
   snapshot: Snapshot;
   cacheSummary: Record<string, number>;
+  indexStatus: IndexStatusResponse | null;
   onUpdate: (settings: Snapshot["settings"]) => void;
   onClearDownloads: () => void;
+  onProcessIndexing: () => void;
+  onRebuildIndex: () => void;
 }) {
   const { settings } = props.snapshot;
+  const hnsw = settings.hnsw;
+  const updateHnsw = (key: keyof Snapshot["settings"]["hnsw"], value: number) =>
+    props.onUpdate({
+      ...settings,
+      hnsw: {
+        ...settings.hnsw,
+        [key]: value
+      }
+    });
   return (
     <section id="settings" className="settings-grid">
       <div className="panel">
@@ -645,6 +670,97 @@ function SettingsPage(props: {
         />
         <p>{settings.lanEnabled ? `手机可发现：${props.snapshot.publicUrl}` : "局域网模式关闭后仅本机客户端可访问后端。"}</p>
       </div>
+      <div className="panel model-panel">
+        <h2>
+          <MonitorCog size={20} />
+          Embedding 阶段
+        </h2>
+        <label className="field-row">
+          <span>Embedding 模型</span>
+          <select
+            value={settings.embeddingProviderId}
+            onChange={(event) =>
+              props.onUpdate({
+                ...settings,
+                embeddingProviderId: event.currentTarget.value as Snapshot["settings"]["embeddingProviderId"]
+              })
+            }
+          >
+            <option value="jina-v5-omni-small">jina-embeddings-v5-omni-small</option>
+          </select>
+        </label>
+        <MetadataGrid
+          items={[
+            ["当前 profile", props.indexStatus?.pipeline.embedding.profile_id ?? "等待后端"],
+            ["模型", props.indexStatus?.pipeline.embedding.model_name ?? "jinaai/jina-embeddings-v5-omni-small"],
+            ["向量维度", String(props.indexStatus?.pipeline.embedding.dimension ?? 1024)],
+            ["运行时", props.indexStatus?.pipeline.embedding.runtime ?? "sentence-transformers"]
+          ]}
+        />
+      </div>
+      <div className="panel model-panel">
+        <h2>
+          <Search size={20} />
+          检索阶段
+        </h2>
+        <label className="field-row">
+          <span>检索方式</span>
+          <select
+            value={settings.retrievalMode}
+            onChange={(event) =>
+              props.onUpdate({
+                ...settings,
+                retrievalMode: event.currentTarget.value as Snapshot["settings"]["retrievalMode"]
+              })
+            }
+          >
+            <option value="hnsw">HNSW 向量索引</option>
+            <option value="full_scan">遍历 / 精确扫描</option>
+          </select>
+        </label>
+        <p>遍历模式使用 Qdrant exact search；HNSW 模式使用 Qdrant 向量索引和下方参数。</p>
+      </div>
+      <div className="panel model-panel">
+        <h2>
+          <Boxes size={20} />
+          HNSW 参数
+        </h2>
+        <NumberField label="m" value={hnsw.m} onChange={(value) => updateHnsw("m", value)} />
+        <NumberField label="ef_construct" value={hnsw.efConstruct} onChange={(value) => updateHnsw("efConstruct", value)} />
+        <NumberField label="full_scan_threshold" value={hnsw.fullScanThreshold} onChange={(value) => updateHnsw("fullScanThreshold", value)} />
+        <NumberField label="hnsw_ef" value={hnsw.searchEf} onChange={(value) => updateHnsw("searchEf", value)} />
+      </div>
+      <div className="panel model-panel">
+        <h2>
+          <ListChecks size={20} />
+          索引控制
+        </h2>
+        <MetadataGrid
+          items={[
+            ["资料总数", String(props.indexStatus?.asset_counts.total ?? 0)],
+            ["已索引", String(props.indexStatus?.asset_counts.indexed ?? 0)],
+            ["等待队列", String(props.indexStatus?.queue_counts.queued ?? 0)],
+            ["失败队列", String(props.indexStatus?.queue_counts.failed ?? 0)]
+          ]}
+        />
+        <div className="button-row">
+          <button type="button" onClick={props.onProcessIndexing}>{desktopCopy.actions.process}</button>
+          <button type="button" className="primary-button" onClick={props.onRebuildIndex}>重构全部索引</button>
+        </div>
+      </div>
+      <div className="panel model-panel">
+        <h2>
+          <Database size={20} />
+          Qdrant Collection
+        </h2>
+        <MetadataGrid
+          items={[
+            ["文本", props.indexStatus?.pipeline.collections.text ?? "等待后端"],
+            ["图片语义", props.indexStatus?.pipeline.collections.image ?? "等待后端"],
+            ["图片标签", props.indexStatus?.pipeline.collections.image_labels ?? "等待后端"]
+          ]}
+        />
+      </div>
       <div className="panel">
         <h2>
           <HardDrive size={20} />
@@ -652,13 +768,6 @@ function SettingsPage(props: {
         </h2>
         <p>{desktopCopy.cards.cache} {formatBytes(props.cacheSummary.downloaded_file ?? 0)}</p>
         <button type="button" onClick={props.onClearDownloads}>{desktopCopy.actions.clearDownloads}</button>
-      </div>
-      <div className="panel">
-        <h2>
-          <MonitorCog size={20} />
-          模型
-        </h2>
-        <p>{desktopCopy.cards.models}</p>
       </div>
       <div className="panel">
         <h2>
@@ -677,6 +786,38 @@ function ToggleRow(props: { label: string; checked: boolean; disabled?: boolean;
       <span>{props.label}</span>
       <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(event) => props.onChange(event.currentTarget.checked)} />
     </label>
+  );
+}
+
+function NumberField(props: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <label className="field-row">
+      <span>{props.label}</span>
+      <input
+        type="number"
+        min={1}
+        value={props.value}
+        onChange={(event) => {
+          const value = Number(event.currentTarget.value);
+          if (Number.isFinite(value) && value > 0) {
+            props.onChange(Math.floor(value));
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+function MetadataGrid(props: { items: Array<[string, string]> }) {
+  return (
+    <dl className="metadata-grid">
+      {props.items.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

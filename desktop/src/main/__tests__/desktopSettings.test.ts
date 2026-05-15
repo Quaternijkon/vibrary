@@ -24,7 +24,15 @@ describe("desktop settings", () => {
     expect(loadDesktopSettings(tempConfigDir())).toEqual({
       lanEnabled: true,
       discoveryEnabled: true,
-      autoIndexEnabled: true
+      autoIndexEnabled: true,
+      embeddingProviderId: "jina-v5-omni-small",
+      retrievalMode: "hnsw",
+      hnsw: {
+        m: 16,
+        efConstruct: 200,
+        fullScanThreshold: 10000,
+        searchEf: 128
+      }
     });
   });
 
@@ -34,13 +42,29 @@ describe("desktop settings", () => {
     saveDesktopSettings(configDir, {
       lanEnabled: false,
       discoveryEnabled: false,
-      autoIndexEnabled: true
+      autoIndexEnabled: true,
+      embeddingProviderId: "jina-v5-omni-small",
+      retrievalMode: "full_scan",
+      hnsw: {
+        m: 24,
+        efConstruct: 180,
+        fullScanThreshold: 640,
+        searchEf: 96
+      }
     });
 
     expect(loadDesktopSettings(configDir)).toMatchObject({
       lanEnabled: false,
       discoveryEnabled: false,
-      autoIndexEnabled: true
+      autoIndexEnabled: true,
+      embeddingProviderId: "jina-v5-omni-small",
+      retrievalMode: "full_scan",
+      hnsw: {
+        m: 24,
+        efConstruct: 180,
+        fullScanThreshold: 640,
+        searchEf: 96
+      }
     });
   });
 });

@@ -6,9 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .config import DEFAULT_EMBEDDING_PROFILE, IMAGE_COLLECTION, IMAGE_LABEL_COLLECTION, AppPaths
+from .config import AppPaths
 from .database import Database, new_id
 from .hashing import sha256_file
+from .pipeline import PipelineConfig
 from .timeutil import utc_now
 
 if TYPE_CHECKING:
@@ -39,9 +40,10 @@ class ImportResult:
 
 
 class LibraryService:
-    def __init__(self, db: Database, paths: AppPaths):
+    def __init__(self, db: Database, paths: AppPaths, pipeline: PipelineConfig | None = None):
         self.db = db
         self.paths = paths
+        self.pipeline = pipeline or PipelineConfig.default()
 
     def list_assets(
         self,
@@ -167,7 +169,7 @@ class LibraryService:
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
-                (version_id, asset_id, content_sha, size_bytes, mime_type, "parser_v1", DEFAULT_EMBEDDING_PROFILE, now),
+                (version_id, asset_id, content_sha, size_bytes, mime_type, "parser_v1", self.pipeline.embedding.profile_id, now),
             )
             self._insert_library_file(asset_id, version_id, self.paths.relative_to_data(library_path))
             self._add_library_ref(device_id, asset_id, version_id, display_name, size_bytes, content_sha)
@@ -252,7 +254,7 @@ class LibraryService:
                     error_message = NULL, retry_count = 0
                 WHERE index_job_id = ?
                 """,
-                (job_type, DEFAULT_EMBEDDING_PROFILE, existing["index_job_id"]),
+                (job_type, self.pipeline.embedding.profile_id, existing["index_job_id"]),
             )
             self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (asset_id,))
             return True
@@ -266,7 +268,7 @@ class LibraryService:
             )
             VALUES (?, ?, ?, ?, 'queued', 100, 'parser_v1', ?, ?)
             """,
-            (new_id("idx"), asset_id, version_id, job_type, DEFAULT_EMBEDDING_PROFILE, utc_now()),
+            (new_id("idx"), asset_id, version_id, job_type, self.pipeline.embedding.profile_id, utc_now()),
         )
         self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (asset_id,))
         return True
@@ -292,14 +294,14 @@ class LibraryService:
                 SELECT COUNT(*) FROM qdrant_points
                 WHERE asset_id = ? AND asset_version_id = ? AND collection_name = ?
                 """,
-                (asset_id, version_id, IMAGE_COLLECTION),
+                (asset_id, version_id, self.pipeline.collections.image),
             )
             label_count = self.db.scalar(
                 """
                 SELECT COUNT(*) FROM qdrant_points
                 WHERE asset_id = ? AND asset_version_id = ? AND collection_name = ?
                 """,
-                (asset_id, version_id, IMAGE_LABEL_COLLECTION),
+                (asset_id, version_id, self.pipeline.collections.image_labels),
             )
             return bool(image_count and label_count)
         point_count = self.db.scalar(
@@ -328,7 +330,7 @@ class LibraryService:
                   AND ij.status IN ('queued', 'indexing', 'retry_wait')
               )
             """,
-            [ext.lstrip(".") for ext in sorted(IMAGE_EXTENSIONS)] + [IMAGE_LABEL_COLLECTION],
+            [ext.lstrip(".") for ext in sorted(IMAGE_EXTENSIONS)] + [self.pipeline.collections.image_labels],
         )
         queued = 0
         now = utc_now()
@@ -341,7 +343,7 @@ class LibraryService:
                 )
                 VALUES (?, ?, ?, 'image', 'queued', 90, 'parser_v2', ?, ?)
                 """,
-                (new_id("idx"), row["asset_id"], row["active_version_id"], DEFAULT_EMBEDDING_PROFILE, now),
+                (new_id("idx"), row["asset_id"], row["active_version_id"], self.pipeline.embedding.profile_id, now),
             )
             self.db.execute("UPDATE assets SET index_status = 'queued' WHERE asset_id = ?", (row["asset_id"],))
             queued += 1
