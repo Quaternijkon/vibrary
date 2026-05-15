@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vibrary-backend"
-version = "0.1.7"
+version = "0.1.8"
 description = "Local Vibrary backend for asset library, uploads, indexing, and source-aware retrieval."
 requires-python = ">=3.11"
 dependencies = [
@@ -15,6 +15,9 @@ dependencies = [
   "sentence-transformers>=5.1,<6",
   "transformers>=4.57,<6",
   "torch>=2.5",
+  "torchvision>=0.20",
+  "peft>=0.17,<1",
+  "accelerate>=1,<2",
   "pillow>=10,<12"
 ]
 
