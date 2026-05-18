@@ -1,16 +1,10 @@
+import { navigationPages } from "./dashboardModel";
+
 export const desktopCopy = {
   brand: {
-    subtitle: "本地资料组"
+    subtitle: "本地优先资料中心"
   },
-  pages: [
-    { id: "home", label: "首页" },
-    { id: "library", label: "资料中心" },
-    { id: "import", label: "导入" },
-    { id: "search", label: "搜索" },
-    { id: "transfer", label: "传输" },
-    { id: "devices", label: "设备" },
-    { id: "settings", label: "设置" }
-  ],
+  pages: navigationPages,
   actions: {
     refresh: "刷新",
     start: "启动服务",
@@ -25,46 +19,59 @@ export const desktopCopy = {
     refreshLibrary: "刷新资料中心",
     allTypes: "全部类型",
     imagesOnly: "只看图片",
-    textOnly: "只看文档"
+    textOnly: "只看文档",
+    rebuildIndex: "重构全部索引",
+    saveSettings: "保存设置",
+    retry: "重试",
+    viewTasks: "查看任务"
   },
   topbar: {
-    title: "Vibrary 资料中心",
+    title: "Vibrary",
     loading: "正在读取服务状态"
   },
   pageTitles: {
-    home: "首页",
+    overview: "总览",
     library: "资料中心",
     import: "导入资料",
     search: "搜索资料",
-    transfer: "传输与索引",
     devices: "设备连接",
-    settings: "设置"
+    config: "配置中心",
+    tasks: "任务"
   },
   pageDescriptions: {
-    home: "查看本机服务、资料总量、索引和局域网状态。",
-    library: "统一管理从电脑和手机加入资料组的文件。",
-    import: "从 Windows 选择文件或文件夹，复制到资料库并进入索引队列。",
-    search: "在已经完成索引的资料中检索，并按设备副本状态打开或下载。",
-    transfer: "查看手机上传、Windows 导入和后端索引处理进度。",
-    devices: "用验证码加入手机，加入后默认成为资料组可信设备。",
-    settings: "调整局域网、发现广播、自动索引和缓存策略。"
+    overview: "确认当前还缺哪些步骤，以及下一步应该做什么。",
+    library: "统一管理从电脑和手机加入资料组的文件，图片直接显示缩略图。",
+    import: "从 Windows 选择文件或文件夹，复制到资料库并进入 embedding 与 Qdrant 索引流程。",
+    search: "在已完成索引的资料中检索，并查看匹配来源、分数和 Qdrant collection。",
+    devices: "用验证码加入手机，管理资料组中的可信设备。",
+    config: "集中配置局域网、embedding、检索、HNSW、索引、Qdrant、缓存和数据目录。",
+    tasks: "查看上传、导入、索引队列和失败任务，定位不可用环节。"
   },
   status: {
     running: "运行中",
     stopped: "已停止",
-    localOnly: "本机",
+    localOnly: "仅本机",
     dataRoot: "数据目录",
     lanApi: "局域网 API",
     qdrantDetail: "仅监听 127.0.0.1",
-    lanDetail: "开启后供已配对手机访问"
+    lanDetail: "开启后供已配对手机访问",
+    ready: "已完成",
+    action: "需要处理",
+    warning: "需要确认",
+    error: "异常",
+    optional: "可选"
   },
   overview: {
+    title: "可用性检查",
+    subtitle: "按顺序处理未完成步骤，系统会更透明地显示导入、embedding、索引和搜索链路。",
+    nextAction: "下一步",
     libraryAssets: "资料总数",
     images: "图片",
     indexed: "已索引",
-    trustedDevices: "可信设备",
+    trustedDevices: "可信手机",
     uploads: "上传任务",
-    indexJobs: "索引任务"
+    indexJobs: "索引任务",
+    qdrantPoints: "Qdrant points"
   },
   libraryCenter: {
     title: "资料中心",
@@ -77,7 +84,7 @@ export const desktopCopy = {
   },
   library: {
     title: "资料导入",
-    hint: "文件会先复制到 Windows 资料库，再进入索引队列。",
+    hint: "文件会先复制到 Windows 资料库，再进入 embedding 和 Qdrant 索引队列。",
     filesSelected: "已选文件",
     folderSelected: "已选文件夹",
     imported: "已导入",
@@ -92,11 +99,33 @@ export const desktopCopy = {
   },
   search: {
     title: "搜索",
-    placeholder: "搜索本地资料",
-    empty: "还没有搜索结果"
+    placeholder: "搜索本地资料，例如：猴子、合同、截图、发票",
+    empty: "还没有搜索结果",
+    matchedBy: "匹配来源",
+    score: "Qdrant 分数"
+  },
+  config: {
+    title: "配置中心",
+    connection: "连接",
+    embedding: "Embedding 阶段",
+    retrieval: "检索阶段",
+    hnsw: "HNSW 参数",
+    indexing: "索引控制",
+    qdrant: "Qdrant",
+    cache: "缓存",
+    storage: "存储",
+    lanEnabled: "默认开启局域网连接",
+    discoveryEnabled: "自动发现广播",
+    autoIndexEnabled: "自动处理索引队列",
+    embeddingProvider: "Embedding 模型",
+    retrievalMode: "检索方式",
+    hnswMode: "HNSW 向量索引",
+    fullScanMode: "遍历 / exact search",
+    qdrantLocalOnly: "Qdrant 只绑定本机，不暴露到局域网。",
+    rebuildHint: "重构会清空当前 active index 记录并重新入队，适合模型、检索配置或失败任务修复后使用。"
   },
   cards: {
-    devices: "配对二维码、可信 Android 设备和最近在线状态",
+    devices: "配对验证码、可信 Android 设备和最近在线状态",
     cache: "下载缓存",
     models: "Embedding 模型、版本和本地可用性",
     settings: "便携模式、数据目录、后端地址和局域网开关"
@@ -110,7 +139,11 @@ export const desktopCopy = {
     requestFailed: (detail: string) => `操作失败：${detail}`,
     indexed: (indexed: number, failed: number) => `已索引 ${indexed} 项，失败 ${failed} 项`,
     results: (count: number) => `找到 ${count} 条结果`,
-    cacheDeleted: (count: number) => `已删除 ${count} 个下载缓存文件`
+    cacheDeleted: (count: number) => `已删除 ${count} 个下载缓存文件`,
+    settingsSaved: "设置已保存，后台服务已按新设置重启",
+    libraryRefreshed: (count: number) => `资料中心已刷新：${count} 项`,
+    deviceRemoved: (deviceId: string) => `已移除设备 ${deviceId}`,
+    rebuildQueued: (count: number) => `已重新加入索引队列：${count} 项`
   },
   statusLabels: {
     queued: "等待中",
@@ -128,7 +161,8 @@ export const desktopCopy = {
     failed: "失败",
     cancelled: "已取消",
     indexing: "索引中",
-    indexed: "已索引"
+    indexed: "已索引",
+    present: "可用"
   },
   deliveryLabels: {
     local_reference: "本地副本",

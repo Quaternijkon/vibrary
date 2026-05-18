@@ -152,7 +152,7 @@ async def _request_device_id(request: Request) -> str | None:
 
 def create_app(paths: AppPaths | None = None, settings: BackendSettings | None = None, vector_store: VectorStore | None = None) -> FastAPI:
     services = Services(settings=settings, paths=paths, vector_store=vector_store)
-    app = FastAPI(title="Vibrary Backend", version="0.1.8")
+    app = FastAPI(title="Vibrary Backend", version="0.1.9")
     app.state.services = services
     app.add_middleware(
         CORSMiddleware,
